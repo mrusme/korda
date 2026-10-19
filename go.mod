@@ -9,7 +9,7 @@ require (
 	github.com/kovidgoyal/imaging v1.9.0
 	github.com/samber/slog-fiber v1.22.2
 	github.com/valyala/fasthttp v1.74.0
-	xn--gckvb8fzb.com/glides v0.3.0
+	xn--gckvb8fzb.com/glides v0.3.1
 )
 
 require (
