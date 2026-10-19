@@ -49,3 +49,19 @@ func TestNullable(t *testing.T) {
 		t.Errorf("a nil time encodes as %s", encoded)
 	}
 }
+
+func TestPostgresMatchesTimestamptzJSON(t *testing.T) {
+	tests := map[time.Time]string{
+		time.Date(2026, 10, 19, 15, 25, 23, 159000000, time.UTC):               `"2026-10-19T15:25:23.159+00:00"`,
+		time.Date(2024, 5, 6, 5, 0, 0, 0, time.UTC):                            `"2024-05-06T05:00:00+00:00"`,
+		time.Date(2024, 5, 6, 7, 8, 9, 123456789, time.FixedZone("x", 2*3600)): `"2024-05-06T05:08:09.123456+00:00"`,
+		time.Date(2020, 1, 2, 3, 4, 5, 100000000, time.UTC):                    `"2020-01-02T03:04:05.1+00:00"`,
+	}
+
+	for in, want := range tests {
+		got, err := json.Marshal(NewPostgres(in))
+		if err != nil || string(got) != want {
+			t.Errorf("Postgres(%v) = %s, %v, want %s", in, got, err, want)
+		}
+	}
+}

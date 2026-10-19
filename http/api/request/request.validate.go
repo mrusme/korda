@@ -10,9 +10,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	"tty.fail/mrus/korda/helpers/optional"
+	"tty.fail/mrus/korda/helpers/refine"
 	"tty.fail/mrus/korda/helpers/sanitize"
 )
 
@@ -26,31 +28,39 @@ const (
 )
 
 type pattern struct {
-	re     *regexp.Regexp
-	source string
+	re      *regexp.Regexp
+	source  string
+	message string
+}
+
+func newPattern(expr string, flags string) pattern {
+	return pattern{re: regexp.MustCompile(expr), source: "/" + expr + "/" + flags}
 }
 
 var (
-	emailPattern = pattern{
-		re:     regexp.MustCompile(`^[\p{L}\p{M}\p{N}.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?)*$`),
-		source: `/^[\p{L}\p{M}\p{N}.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?)*$/u`,
-	}
-	uuidPattern = pattern{
-		re:     regexp.MustCompile(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`),
-		source: `/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$/`,
-	}
-	datePattern = pattern{
-		re:     regexp.MustCompile(`^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$`),
-		source: `/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$/`,
-	}
-	namedPatterns = map[string]pattern{
-		"pin": {
-			re:     regexp.MustCompile(`^\d{6}$`),
-			source: `/^\d{6}$/`,
+	emailPattern    = newPattern(`^[\p{L}\p{M}\p{N}.!#$%&'*+/=?^_`+"`"+`{|}~-]+@[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?)*$`, "u")
+	uuidPattern     = newPattern(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`, "")
+	datePattern     = newPattern(`^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$`, "")
+	datetimePattern = newPattern(`^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$`, "")
+	namedPatterns   = map[string]pattern{
+		"pin":     newPattern(`^\d{6}$`, ""),
+		"license": newPattern(`^IM(SV|CL)(-[\dA-Za-z]{4}){8}$`, ""),
+		"hlsSegment": {
+			re:      regexp.MustCompile(`^(init\.mp4|seg_\d+\.m4s)$`),
+			source:  `/^(init\.mp4|seg_\d+\.m4s)$/`,
+			message: "Invalid HLS segment filename",
 		},
-		"license": {
-			re:     regexp.MustCompile(`^IM(SV|CL)(-[\dA-Za-z]{4}){8}$`),
-			source: `/^IM(SV|CL)(-[\dA-Za-z]{4}){8}$/`,
+	}
+	datetimeParts = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})$`)
+
+	fieldRefinements = map[string]func(raw any) string{
+		"rating": func(raw any) string {
+			if n, ok := raw.(json.Number); ok {
+				if f, err := strconv.ParseFloat(string(n), 64); err == nil && f == 0 {
+					return "Rating must be -1 (rejected), 1–5 (starred), or null (unrated); 0 is not valid"
+				}
+			}
+			return ""
 		},
 	}
 )
@@ -61,6 +71,11 @@ var (
 
 	optionalPkgPath = reflect.TypeFor[optional.Value[int]]().PkgPath()
 	enumType        = reflect.TypeFor[enum]()
+	timeType        = reflect.TypeFor[time.Time]()
+	recordType      = reflect.TypeFor[json.RawMessage]()
+	strictType      = reflect.TypeFor[refine.Strict]()
+	refinerType     = reflect.TypeFor[refine.Refiner]()
+	piperType       = reflect.TypeFor[refine.Piper]()
 )
 
 type enum interface {
@@ -71,11 +86,18 @@ type rules struct {
 	email    bool
 	uuid     bool
 	date     bool
+	datetime bool
 	nullable bool
 	optional bool
 	sanitize bool
+	coerce   bool
+	trim     bool
+	json     bool
+	boolean  bool
 	min      *int64
+	max      *int64
 	regex    *pattern
+	refine   string
 }
 
 func parseRules(tag string) (r rules, err error) {
@@ -92,24 +114,43 @@ func parseRules(tag string) (r rules, err error) {
 			r.uuid = true
 		case "date":
 			r.date = true
+		case "datetime":
+			r.datetime = true
 		case "nullable":
 			r.nullable = true
 		case "optional":
 			r.optional = true
 		case "sanitize":
 			r.sanitize = true
-		case "min":
-			minimum, err := strconv.ParseInt(arg, 10, 64)
+		case "coerce":
+			r.coerce = true
+		case "trim":
+			r.trim = true
+		case "json":
+			r.json = true
+		case "boolean":
+			r.boolean = true
+		case "min", "max":
+			limit, err := strconv.ParseInt(arg, 10, 64)
 			if err != nil {
 				return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
 			}
-			r.min = &minimum
+			if name == "min" {
+				r.min = &limit
+			} else {
+				r.max = &limit
+			}
 		case "regex":
 			p, ok := namedPatterns[arg]
 			if !ok {
 				return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
 			}
 			r.regex = &p
+		case "refine":
+			if _, ok := fieldRefinements[arg]; !ok {
+				return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
+			}
+			r.refine = arg
 		default:
 			return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
 		}
@@ -126,6 +167,22 @@ type walker struct {
 
 func (w *walker) report(path []any, iss Issue, message string) {
 	w.issues = append(w.issues, iss.withPath(path, message))
+}
+
+func (w *walker) add(prefix []any, issues ...refine.Issue) {
+	for _, iss := range issues {
+		w.issues = append(w.issues, Custom(append(append([]any{}, prefix...), iss.Path...), iss.Message))
+	}
+}
+
+func (w *walker) abortedSince(start int) bool {
+	for _, iss := range w.issues[start:] {
+		if iss.abort {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (w *walker) fail(err error) {
@@ -174,7 +231,7 @@ func isOptional(t reflect.Type) bool {
 	return t.Kind() == reflect.Struct && t.PkgPath() == optionalPkgPath && strings.HasPrefix(t.Name(), "Value[")
 }
 
-func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rules) (any, bool) {
+func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rules, items rules) (any, bool) {
 	switch {
 	case isOptional(t):
 		inner, _ := t.FieldByName("V")
@@ -184,7 +241,7 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 		if raw == nil && r.nullable {
 			return nil, true
 		}
-		return w.value(path, raw, present, inner.Type, r)
+		return w.value(path, raw, present, inner.Type, r, items)
 
 	case t.Kind() == reflect.Pointer:
 		if !present {
@@ -193,7 +250,29 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 		if raw == nil && r.nullable {
 			return nil, true
 		}
-		return w.value(path, raw, present, t.Elem(), r)
+		return w.value(path, raw, present, t.Elem(), r, items)
+	}
+
+	if r.json && present {
+		if s, ok := raw.(string); ok {
+			parsed, err := decodeOrdered([]byte(s))
+			if err != nil {
+				w.issues = append(w.issues, invalidJSON(path))
+				return nil, false
+			}
+			saved := w.mode
+			w.mode = modeBody
+			defer func() { w.mode = saved }()
+			raw = parsed
+		}
+	}
+
+	switch {
+	case t == timeType && r.datetime:
+		return w.datetime(path, raw, present)
+
+	case t == recordType:
+		return w.record(path, raw, present)
 
 	case t.Implements(enumType):
 		return w.enum(path, raw, present, reflect.Zero(t).Interface().(enum).Enum())
@@ -202,7 +281,7 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 		if !present && r.optional {
 			return nil, false
 		}
-		return w.slice(path, raw, present, t, r)
+		return w.slice(path, raw, present, t, r, items)
 
 	case t.Kind() == reflect.Struct:
 		return w.object(path, raw, present, t)
@@ -211,7 +290,7 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 		return w.string(path, raw, present, r)
 
 	case t.Kind() == reflect.Bool:
-		if w.mode == modeQuery {
+		if w.mode == modeQuery && !r.boolean {
 			return w.stringBool(path, raw, present)
 		}
 		if v, ok := raw.(bool); ok && present {
@@ -222,7 +301,15 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 		return nil, false
 
 	case t.Kind() >= reflect.Int && t.Kind() <= reflect.Int64:
-		return w.integer(path, raw, present, r)
+		start := len(w.issues)
+		v, keep := w.integer(path, raw, present, r)
+		if r.refine != "" && !w.abortedSince(start) {
+			if message := fieldRefinements[r.refine](raw); message != "" {
+				w.issues = append(w.issues, Custom(path, message))
+				return nil, false
+			}
+		}
+		return v, keep
 
 	case t.Kind() == reflect.Float64:
 		return w.number(path, raw, present, r)
@@ -233,22 +320,46 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 }
 
 func (w *walker) object(path []any, raw any, present bool, t reflect.Type) (any, bool) {
-	m, ok := raw.(map[string]any)
+	m, ok := raw.(*Object)
 	if !ok || !present {
 		iss, message := invalidType("object", received(raw, present))
 		w.report(path, iss, message)
 		return nil, false
 	}
 
-	out := make(map[string]any, len(m))
-	w.fields(path, m, t, out)
+	start := len(w.issues)
+	out := NewObject()
+	known := make(map[string]bool)
+	strict := false
+	w.fields(path, m, t, out, known, &strict)
+
+	if strict {
+		var unknown []string
+		for _, key := range jsKeyOrder(m.Keys) {
+			if !known[key] {
+				unknown = append(unknown, key)
+			}
+		}
+		if len(unknown) > 0 {
+			iss, message := unrecognizedKeys(unknown)
+			w.report(path, iss, message)
+		}
+	}
+
+	if !w.abortedSince(start) && reflect.PointerTo(t).Implements(refinerType) {
+		w.add(path, reflect.New(t).Interface().(refine.Refiner).Refine(m)...)
+	}
+	if len(w.issues) == start && reflect.PointerTo(t).Implements(piperType) {
+		w.add(path, reflect.New(t).Interface().(refine.Piper).Pipe(m)...)
+	}
 
 	return out, true
 }
 
-func (w *walker) fields(path []any, m map[string]any, t reflect.Type, out map[string]any) {
+func (w *walker) fields(path []any, m *Object, t reflect.Type, out *Object, known map[string]bool, strict *bool) {
 	for f := range t.Fields() {
-		if !f.IsExported() {
+		if f.Type == strictType {
+			*strict = true
 			continue
 		}
 
@@ -256,49 +367,71 @@ func (w *walker) fields(path []any, m map[string]any, t reflect.Type, out map[st
 		if name == "-" {
 			continue
 		}
-		if f.Anonymous && name == "" && f.Type.Kind() == reflect.Struct {
-			w.fields(path, m, f.Type, out)
+		if f.Anonymous && name == "" && f.Type.Kind() == reflect.Struct && !isOptional(f.Type) {
+			w.fields(path, m, f.Type, out, known, strict)
+			continue
+		}
+		if !f.IsExported() {
 			continue
 		}
 		if name == "" {
 			name = f.Name
 		}
+		known[name] = true
 
 		r, err := parseRules(f.Tag.Get("v"))
 		if err != nil {
 			w.fail(err)
 			continue
 		}
+		items, err := parseRules(f.Tag.Get("vi"))
+		if err != nil {
+			w.fail(err)
+			continue
+		}
 
-		child, present := m[name]
-		if v, keep := w.value(join(path, name), child, present, f.Type, r); keep {
-			out[name] = v
+		child, present := m.Get(name)
+		if v, keep := w.value(join(path, name), child, present, f.Type, r, items); keep {
+			out.Set(name, v)
 		}
 	}
 }
 
-func (w *walker) slice(path []any, raw any, present bool, t reflect.Type, r rules) (any, bool) {
-	items, ok := raw.([]any)
+func (w *walker) slice(path []any, raw any, present bool, t reflect.Type, r rules, items rules) (any, bool) {
+	list, ok := raw.([]any)
 	if !ok || !present {
 		iss, message := invalidType("array", received(raw, present))
 		w.report(path, iss, message)
 		return nil, false
 	}
 
-	itemRules := rules{}
-	out := make([]any, 0, len(items))
-	for i, item := range items {
-		if v, keep := w.value(join(path, i), item, true, t.Elem(), itemRules); keep {
+	out := make([]any, 0, len(list))
+	for i, item := range list {
+		if v, keep := w.value(join(path, i), item, true, t.Elem(), items, rules{}); keep {
 			out = append(out, v)
 		}
 	}
 
-	if r.min != nil && int64(len(items)) < *r.min {
+	if r.min != nil && int64(len(list)) < *r.min {
 		iss, message := tooSmall("array", *r.min)
+		w.report(path, iss, message)
+	}
+	if r.max != nil && int64(len(list)) > *r.max {
+		iss, message := tooBig("array", *r.max)
 		w.report(path, iss, message)
 	}
 
 	return out, true
+}
+
+func (w *walker) record(path []any, raw any, present bool) (any, bool) {
+	if o, ok := raw.(*Object); ok && present {
+		return o, true
+	}
+
+	iss, message := invalidType("record", received(raw, present))
+	w.report(path, iss, message)
+	return nil, false
 }
 
 func (w *walker) enum(path []any, raw any, present bool, values []string) (any, bool) {
@@ -333,6 +466,62 @@ func (w *walker) stringBool(path []any, raw any, present bool) (any, bool) {
 	return nil, false
 }
 
+func (w *walker) datetime(path []any, raw any, present bool) (any, bool) {
+	const expected = "Invalid input: expected ISO 8601 datetime string, received "
+
+	s, ok := raw.(string)
+	if !ok || !present {
+		iss, _ := invalidType("string", received(raw, present))
+		w.report(path, iss, expected+typeOf(raw, present))
+		return nil, false
+	}
+
+	if !datetimePattern.re.MatchString(s) {
+		iss, _ := invalidFormat("datetime", datetimePattern.source, "")
+		w.report(path, iss, expected+"string")
+		return nil, false
+	}
+
+	t, err := ParseISODatetime(s)
+	if err != nil {
+		iss, _ := invalidFormat("datetime", datetimePattern.source, "")
+		w.report(path, iss, expected+"string")
+		return nil, false
+	}
+
+	return t.UTC().Format("2006-01-02T15:04:05.000Z07:00"), true
+}
+
+func ParseISODatetime(s string) (time.Time, error) {
+	m := datetimeParts.FindStringSubmatch(s)
+	if m == nil {
+		return time.Time{}, fmt.Errorf("%w: %q", ErrUnknownRule, s)
+	}
+
+	atoi := func(v string) int {
+		n, _ := strconv.Atoi(v)
+		return n
+	}
+
+	nanos := 0
+	if m[7] != "" {
+		fraction := (m[7] + "000")[:3]
+		nanos = atoi(fraction) * int(time.Millisecond)
+	}
+
+	loc := time.UTC
+	if m[8] != "Z" {
+		sign := 1
+		if m[8][0] == '-' {
+			sign = -1
+		}
+		offset := sign * (atoi(m[8][1:3])*3600 + atoi(m[8][4:6])*60)
+		loc = time.FixedZone("", offset)
+	}
+
+	return time.Date(atoi(m[1]), time.Month(atoi(m[2])), atoi(m[3]), atoi(m[4]), atoi(m[5]), atoi(m[6]), nanos, loc).UTC(), nil
+}
+
 func (w *walker) string(path []any, raw any, present bool, r rules) (any, bool) {
 	s, ok := raw.(string)
 	if !ok || !present {
@@ -345,6 +534,10 @@ func (w *walker) string(path []any, raw any, present bool, r rules) (any, bool) 
 		}
 		w.report(path, iss, message)
 		return nil, false
+	}
+
+	if r.trim {
+		s = jsTrim(s)
 	}
 
 	valid := true
@@ -365,12 +558,22 @@ func (w *walker) string(path []any, raw any, present bool, r rules) (any, bool) 
 		valid = false
 	}
 	if r.regex != nil && !r.regex.re.MatchString(s) {
-		iss, message := invalidFormat("regex", r.regex.source, "Invalid string: must match pattern "+r.regex.source)
+		message := "Invalid string: must match pattern " + r.regex.source
+		if r.regex.message != "" {
+			message = r.regex.message
+		}
+		iss, message := invalidFormat("regex", r.regex.source, message)
 		w.report(path, iss, message)
 		valid = false
 	}
-	if r.min != nil && int64(len(utf16.Encode([]rune(s)))) < *r.min {
+	length := int64(len(utf16.Encode([]rune(s))))
+	if r.min != nil && length < *r.min {
 		iss, message := tooSmall("string", *r.min)
+		w.report(path, iss, message)
+		valid = false
+	}
+	if r.max != nil && length > *r.max {
+		iss, message := tooBig("string", *r.max)
 		w.report(path, iss, message)
 		valid = false
 	}
@@ -388,22 +591,34 @@ func (w *walker) string(path []any, raw any, present bool, r rules) (any, bool) 
 	return s, true
 }
 
-func (w *walker) finite(path []any, raw any, present bool) (float64, bool) {
-	n, ok := raw.(json.Number)
-	if !ok || !present {
-		iss, message := invalidType("number", received(raw, present))
-		w.report(path, iss, message)
-		return 0, false
+func (w *walker) finite(path []any, raw any, present bool, r rules) (float64, bool) {
+	var f float64
+	if r.coerce {
+		f = jsNumber(raw, present)
+	} else {
+		n, ok := raw.(json.Number)
+		if !ok || !present {
+			iss, message := invalidType("number", received(raw, present))
+			w.report(path, iss, message)
+			return 0, false
+		}
+
+		var err error
+		f, err = strconv.ParseFloat(string(n), 64)
+		if err != nil && !math.IsInf(f, 0) {
+			iss, message := invalidType("number", "string")
+			w.report(path, iss, message)
+			return 0, false
+		}
 	}
 
-	f, err := strconv.ParseFloat(string(n), 64)
-	if math.IsInf(f, 0) {
-		iss, message := invalidInfinity()
+	switch {
+	case math.IsNaN(f):
+		iss, message := invalidNaN()
 		w.report(path, iss, message)
 		return 0, false
-	}
-	if err != nil {
-		iss, message := invalidType("number", "string")
+	case math.IsInf(f, 0):
+		iss, message := invalidInfinity()
 		w.report(path, iss, message)
 		return 0, false
 	}
@@ -411,15 +626,29 @@ func (w *walker) finite(path []any, raw any, present bool) (float64, bool) {
 	return f, true
 }
 
+func (w *walker) bounds(path []any, f float64, r rules) bool {
+	valid := true
+	if r.min != nil && f < float64(*r.min) {
+		iss, message := tooSmall("number", *r.min)
+		w.report(path, iss, message)
+		valid = false
+	}
+	if r.max != nil && f > float64(*r.max) {
+		iss, message := tooBig("number", *r.max)
+		w.report(path, iss, message)
+		valid = false
+	}
+
+	return valid
+}
+
 func (w *walker) number(path []any, raw any, present bool, r rules) (any, bool) {
-	f, ok := w.finite(path, raw, present)
+	f, ok := w.finite(path, raw, present, r)
 	if !ok {
 		return nil, false
 	}
 
-	if r.min != nil && f < float64(*r.min) {
-		iss, message := tooSmall("number", *r.min)
-		w.report(path, iss, message)
+	if !w.bounds(path, f, r) {
 		return nil, false
 	}
 
@@ -427,7 +656,7 @@ func (w *walker) number(path []any, raw any, present bool, r rules) (any, bool) 
 }
 
 func (w *walker) integer(path []any, raw any, present bool, r rules) (any, bool) {
-	f, ok := w.finite(path, raw, present)
+	f, ok := w.finite(path, raw, present, r)
 	if !ok {
 		return nil, false
 	}
@@ -444,9 +673,7 @@ func (w *walker) integer(path []any, raw any, present bool, r rules) (any, bool)
 		w.report(path, iss, message)
 		valid = false
 	}
-	if r.min != nil && f < float64(*r.min) {
-		iss, message := tooSmall("number", *r.min)
-		w.report(path, iss, message)
+	if !w.bounds(path, f, r) {
 		valid = false
 	}
 	if !valid {
@@ -463,7 +690,7 @@ func validate(raw any, present bool, t reflect.Type, m mode) (any, []Issue, erro
 		return nil, nil, fmt.Errorf("%w: %s", ErrUnsupportedType, t)
 	}
 
-	v, _ := w.object([]any{}, raw, present, t)
+	v, _ := w.object([]any{}, ordered(raw), present, t)
 	if w.err != nil {
 		return nil, nil, w.err
 	}

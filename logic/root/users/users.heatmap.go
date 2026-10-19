@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	gh "tty.fail/mrus/korda/helpers"
+	"xn--gckvb8fzb.com/glides/runtime"
 )
 
 const dateLayout = "2006-01-02"
@@ -42,7 +44,7 @@ type Heatmap struct {
 	Total  int64
 }
 
-func CalendarHeatmap(ctx context.Context, userID uuid.UUID, in *HeatmapInput, today time.Time) (*Heatmap, error) {
+func CalendarHeatmap(ctx context.Context, rt *runtime.Runtime, userID uuid.UUID, in *HeatmapInput, today time.Time) (*Heatmap, error) {
 	to := today.UTC().Truncate(24 * time.Hour)
 	if in.To != nil {
 		parsed, err := time.Parse(dateLayout, *in.To)
@@ -61,9 +63,19 @@ func CalendarHeatmap(ctx context.Context, userID uuid.UUID, in *HeatmapInput, to
 		from = parsed
 	}
 
+	counts, err := gh.Repositories(rt).Asset.Heatmap(ctx, userID, in.Type != nil && *in.Type == HeatmapTaken, from, to.AddDate(0, 0, 1))
+	if err != nil {
+		return nil, err
+	}
+	byDate := make(map[string]int64, len(counts))
+	for _, c := range counts {
+		byDate[c.Date] = c.Count
+	}
+
 	heatmap := &Heatmap{From: from.Format(dateLayout), To: to.Format(dateLayout), Series: []HeatmapDay{}}
 	for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
-		heatmap.Series = append(heatmap.Series, HeatmapDay{Date: day.Format(dateLayout)})
+		date := day.Format(dateLayout)
+		heatmap.Series = append(heatmap.Series, HeatmapDay{Date: date, Count: byDate[date]})
 	}
 
 	return heatmap, nil

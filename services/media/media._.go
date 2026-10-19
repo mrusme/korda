@@ -18,6 +18,15 @@ type Media struct {
 	root    *mediaroot.MediaRoot
 	size    int
 	quality int
+	ffmpeg  *FFmpeg
+}
+
+func (m *Media) SetFFmpeg(f *FFmpeg) {
+	m.ffmpeg = f
+}
+
+func (m *Media) FFmpeg() *FFmpeg {
+	return m.ffmpeg
 }
 
 func New(root *mediaroot.MediaRoot, size int, quality int) (*Media, error) {
@@ -62,7 +71,11 @@ func Outside(img image.Image, size int) image.Image {
 	return imaging.Resize(img, width, height, imaging.Lanczos)
 }
 
-func (m *Media) WriteJPEG(img image.Image, relative string) (err error) {
+func (m *Media) WriteJPEG(img image.Image, relative string) error {
+	return m.writeJPEG(img, relative, m.quality)
+}
+
+func (m *Media) writeJPEG(img image.Image, relative string, quality int) (err error) {
 	abs, err := m.root.Abs(relative)
 	if err != nil {
 		return err
@@ -81,7 +94,7 @@ func (m *Media) WriteJPEG(img image.Image, relative string) (err error) {
 		}
 	}()
 
-	if err = jpeg.Encode(f, img, &jpeg.Options{Quality: m.quality}); err != nil {
+	if err = jpeg.Encode(f, img, &jpeg.Options{Quality: quality}); err != nil {
 		f.Close()
 		return err
 	}

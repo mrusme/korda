@@ -10,6 +10,7 @@ import (
 type Issue struct {
 	keys   []string
 	values []any
+	abort  bool
 }
 
 func newIssue(pairs ...any) Issue {
@@ -36,9 +37,15 @@ func (iss Issue) withPath(path []any, message string) Issue {
 	out := Issue{
 		keys:   append(append([]string(nil), iss.keys...), "path", "message"),
 		values: append(append([]any(nil), iss.values...), append([]any{}, path...), message),
+		abort:  iss.abort,
 	}
 
 	return out
+}
+
+func (iss Issue) aborting() Issue {
+	iss.abort = true
+	return iss
 }
 
 func (iss Issue) MarshalJSON() ([]byte, error) {
@@ -76,18 +83,23 @@ func marshal(v any) ([]byte, error) {
 }
 
 func invalidType(expected string, received string) (Issue, string) {
-	return newIssue("expected", expected, "code", "invalid_type"),
+	return newIssue("expected", expected, "code", "invalid_type").aborting(),
 		"Invalid input: expected " + expected + ", received " + received
 }
 
 func invalidInt() (Issue, string) {
-	return newIssue("expected", "int", "format", "safeint", "code", "invalid_type"),
+	return newIssue("expected", "int", "format", "safeint", "code", "invalid_type").aborting(),
 		"Invalid input: expected int, received number"
 }
 
 func invalidInfinity() (Issue, string) {
-	return newIssue("expected", "number", "code", "invalid_type", "received", "Infinity"),
+	return newIssue("expected", "number", "code", "invalid_type", "received", "Infinity").aborting(),
 		"Invalid input: expected number, received number"
+}
+
+func invalidNaN() (Issue, string) {
+	return newIssue("expected", "number", "code", "invalid_type", "received", "NaN").aborting(),
+		"Invalid input: expected number, received NaN"
 }
 
 func unsafeInt(positive bool) (Issue, string) {
@@ -99,6 +111,20 @@ func unsafeInt(positive bool) (Issue, string) {
 
 	return newIssue("code", "too_small", "minimum", int64(-maxSafeInteger), "note", note, "origin", "int", "inclusive", true),
 		"Too small: expected int to be >=" + strconv.FormatInt(-maxSafeInteger, 10)
+}
+
+func tooBig(origin string, maximum int64) (Issue, string) {
+	iss := newIssue("origin", origin, "code", "too_big", "maximum", maximum, "inclusive", true)
+	limit := strconv.FormatInt(maximum, 10)
+
+	switch origin {
+	case "string":
+		return iss, "Too big: expected string to have <=" + limit + " characters"
+	case "array":
+		return iss, "Too big: expected array to have <=" + limit + " items"
+	}
+
+	return iss, "Too big: expected number to be <=" + limit
 }
 
 func tooSmall(origin string, minimum int64) (Issue, string) {
@@ -120,13 +146,33 @@ func invalidFormat(format string, pattern string, message string) (Issue, string
 }
 
 func invalidValue(values []string) (Issue, string) {
-	return newIssue("code", "invalid_value", "values", values), "Invalid option: expected one of " + quoted(values)
+	return newIssue("code", "invalid_value", "values", values).aborting(),
+		"Invalid option: expected one of " + quoted(values)
 }
 
 func invalidStringBool() (Issue, string) {
 	values := []string{"true", "false"}
-	return newIssue("code", "invalid_value", "expected", "stringbool", "values", values),
+	return newIssue("code", "invalid_value", "expected", "stringbool", "values", values).aborting(),
 		"Invalid option: expected one of " + quoted(values)
+}
+
+func unrecognizedKeys(keys []string) (Issue, string) {
+	message := "Unrecognized key: " + quoted(keys)
+	if len(keys) > 1 {
+		parts := make([]string, len(keys))
+		for i, key := range keys {
+			encoded, _ := marshal(key)
+			parts[i] = string(encoded)
+		}
+		message = "Unrecognized keys: " + strings.Join(parts, ", ")
+	}
+
+	return newIssue("code", "unrecognized_keys", "keys", keys).aborting(), message
+}
+
+func invalidJSON(path []any) Issue {
+	return newIssue("code", "custom", "message", "Invalid input: expected JSON string, received string", "path",
+		append([]any{}, path...)).aborting()
 }
 
 func Custom(path []any, message string) Issue {

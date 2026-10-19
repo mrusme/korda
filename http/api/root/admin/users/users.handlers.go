@@ -167,7 +167,7 @@ func (r *Route) GetUserCalendarHeatmapAdmin(c fiber.Ctx) error {
 		return err
 	}
 
-	heatmap, err := logicusers.CalendarHeatmap(req.Context(), id, in, time.Now())
+	heatmap, err := logicusers.CalendarHeatmap(req.Context(), r.Runtime, id, in, time.Now())
 	if err != nil {
 		return err
 	}
@@ -210,7 +210,7 @@ func (r *Route) GetUserStatisticsAdmin(c fiber.Ctx) error {
 		return err
 	}
 
-	stats, err := logicadminusers.Statistics(req.Context(), id, &in)
+	stats, err := logicadminusers.Statistics(req.Context(), r.Runtime, id, &in)
 	if err != nil {
 		return err
 	}

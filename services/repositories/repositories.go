@@ -4,6 +4,10 @@ import (
 	"slices"
 
 	"tty.fail/mrus/korda/services/repositories/apikey"
+	"tty.fail/mrus/korda/services/repositories/asset"
+	"tty.fail/mrus/korda/services/repositories/assetexif"
+	"tty.fail/mrus/korda/services/repositories/assetfile"
+	"tty.fail/mrus/korda/services/repositories/assetmetadata"
 	"tty.fail/mrus/korda/services/repositories/session"
 	"tty.fail/mrus/korda/services/repositories/systemmetadata"
 	"tty.fail/mrus/korda/services/repositories/user"
@@ -20,6 +24,10 @@ type Repositories struct {
 	APIKey         *apikey.Repository
 	SystemMetadata *systemmetadata.Repository
 	VersionHistory *versionhistory.Repository
+	Asset          *asset.Repository
+	AssetExif      *assetexif.Repository
+	AssetFile      *assetfile.Repository
+	AssetMetadata  *assetmetadata.Repository
 }
 
 type startable interface {
@@ -49,6 +57,18 @@ func New(db *database.Database) (repos *Repositories, err error) {
 	if repos.VersionHistory, err = versionhistory.New(db); err != nil {
 		return nil, err
 	}
+	if repos.Asset, err = asset.New(db); err != nil {
+		return nil, err
+	}
+	if repos.AssetExif, err = assetexif.New(db); err != nil {
+		return nil, err
+	}
+	if repos.AssetFile, err = assetfile.New(db); err != nil {
+		return nil, err
+	}
+	if repos.AssetMetadata, err = assetmetadata.New(db); err != nil {
+		return nil, err
+	}
 
 	return repos, nil
 }
@@ -61,6 +81,10 @@ func (repos *Repositories) all() []startable {
 		repos.APIKey,
 		repos.SystemMetadata,
 		repos.VersionHistory,
+		repos.Asset,
+		repos.AssetExif,
+		repos.AssetFile,
+		repos.AssetMetadata,
 	}
 }
 

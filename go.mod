@@ -3,12 +3,18 @@ module tty.fail/mrus/korda
 go 1.27.2
 
 require (
+	github.com/gen2brain/h265 v0.2.3
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/google/uuid v1.6.0
 	github.com/hibiken/asynq v0.26.0
 	github.com/kovidgoyal/imaging v1.9.0
 	github.com/samber/slog-fiber v1.22.2
 	github.com/valyala/fasthttp v1.74.0
+	go.n16f.net/thumbhash v1.1.0
+	golang.org/x/image v0.47.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
+	modernc.org/sqlite v1.60.1
 	xn--gckvb8fzb.com/glides v0.3.1
 )
 
@@ -48,14 +54,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.12.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.60.1 // indirect
 )

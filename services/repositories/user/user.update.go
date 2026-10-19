@@ -104,3 +104,25 @@ func (repo *Repository) AddUsage(ctx context.Context, id uuid.UUID, delta int64,
 
 	return err
 }
+
+func (repo *Repository) SyncUsage(ctx context.Context, now time.Time) error {
+	ids, err := database.Values[uuid.UUID](ctx, repo.db, `SELECT id FROM users WHERE deleted_at IS NULL`)
+	if err != nil {
+		return err
+	}
+
+	for _, id := range ids {
+		if _, err = database.Exec(ctx, repo.db, `UPDATE users SET quota_usage_in_bytes = (
+				SELECT COALESCE(SUM(e.file_size_in_byte), 0) FROM assets a
+				LEFT JOIN asset_exif e ON e.asset_id = a.id
+				WHERE a.library_id IS NULL AND a.owner_id = users.id),
+			updated_at = $1, update_id = $2
+			WHERE id = $3`,
+			now, uuid.Must(uuid.NewV7()), id,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

@@ -56,3 +56,26 @@ func Parse(raw string) (time.Time, error) {
 
 	return parsed.UTC(), nil
 }
+
+const PostgresLayout = "2006-01-02T15:04:05.999999+00:00"
+
+type Postgres struct {
+	time.Time
+}
+
+func NewPostgres(t time.Time) Postgres {
+	return Postgres{Time: t.UTC()}
+}
+
+func NullablePostgres(t sql.Null[time.Time]) *Postgres {
+	if !t.Valid {
+		return nil
+	}
+
+	value := NewPostgres(t.V)
+	return &value
+}
+
+func (t Postgres) MarshalJSON() ([]byte, error) {
+	return strconv.AppendQuote(nil, t.UTC().Truncate(time.Microsecond).Format(PostgresLayout)), nil
+}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -83,7 +84,12 @@ func (s *side) run(t *testing.T, st step) apiResponse {
 func immichSide(t *testing.T, base string) *side {
 	t.Helper()
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 
 	return &side{
 		name: "immich",
@@ -207,6 +213,12 @@ func writeShape(dec *json.Decoder, out *strings.Builder) error {
 	return nil
 }
 
+var usagePattern = regexp.MustCompile(`"quotaUsageInBytes":\d+`)
+
+func referenceNormalize(body string) string {
+	return usagePattern.ReplaceAllString(normalize(body), `"quotaUsageInBytes":<usage>`)
+}
+
 func TestConformance(t *testing.T) {
 	base := os.Getenv(envReferenceURL)
 	email := os.Getenv(envReferenceEmail)
@@ -325,7 +337,7 @@ func TestConformance(t *testing.T) {
 					t.Fatalf("Immich body: %v", err)
 				}
 			default:
-				a, b = normalize(string(got.Body)), normalize(string(want.Body))
+				a, b = referenceNormalize(string(got.Body)), referenceNormalize(string(want.Body))
 			}
 
 			if a != b {

@@ -15,6 +15,12 @@ const (
 	MediaDefaultConcurrency  int    = 1
 	MediaDefaultThumbSize    int    = 250
 	MediaDefaultThumbQuality int    = 80
+	MediaDefaultPreviewSize  int    = 1440
+	MediaDefaultPreviewQual  int    = 80
+	MediaDefaultFFmpeg       string = "ffmpeg"
+	MediaDefaultFFprobe      string = "ffprobe"
+	MediaDefaultTranscode    string = "required"
+	MediaDefaultResolution   string = "720"
 	ServerDefaultTrashDays   int    = 30
 	ServerDefaultDeleteDelay int    = 7
 )
@@ -44,6 +50,12 @@ type MediaConfig struct {
 	Concurrency      int    `koanf:"Concurrency"`
 	ThumbnailSize    int    `koanf:"ThumbnailSize"`
 	ThumbnailQuality int    `koanf:"ThumbnailQuality"`
+	PreviewSize      int    `koanf:"PreviewSize"`
+	PreviewQuality   int    `koanf:"PreviewQuality"`
+	FFmpeg           string `koanf:"FFmpeg"`
+	FFprobe          string `koanf:"FFprobe"`
+	Transcode        string `koanf:"Transcode"`
+	TargetResolution string `koanf:"TargetResolution"`
 }
 
 type ServerConfig struct {
@@ -77,6 +89,12 @@ func NewMediaConfig() MediaConfig {
 		Concurrency:      MediaDefaultConcurrency,
 		ThumbnailSize:    MediaDefaultThumbSize,
 		ThumbnailQuality: MediaDefaultThumbQuality,
+		PreviewSize:      MediaDefaultPreviewSize,
+		PreviewQuality:   MediaDefaultPreviewQual,
+		FFmpeg:           MediaDefaultFFmpeg,
+		FFprobe:          MediaDefaultFFprobe,
+		Transcode:        MediaDefaultTranscode,
+		TargetResolution: MediaDefaultResolution,
 	}
 }
 

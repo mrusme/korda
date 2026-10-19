@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"tty.fail/mrus/korda/errs"
@@ -32,9 +33,26 @@ func Require(
 }
 
 func check(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, p permission.Permission, ids []uuid.UUID) ([]uuid.UUID, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
 	switch p {
 	case permission.AuthDeviceDelete, permission.SessionUpdate, permission.SessionLock:
 		return gh.Repositories(rt).Session.OwnedBy(ctx, a.User.ID, ids)
+
+	case permission.AssetRead, permission.AssetView, permission.AssetDownload,
+		permission.AssetUpdate, permission.AssetDelete, permission.AssetCopy,
+		permission.AssetEditGet, permission.AssetEditCreate, permission.AssetEditDelete:
+		return gh.Repositories(rt).Asset.OwnedBy(ctx, a.User.ID, ids, a.Elevated)
+
+	case permission.AssetShare:
+		return gh.Repositories(rt).Asset.OwnedBy(ctx, a.User.ID, ids, false)
+
+	case permission.AssetUpload:
+		if slices.Contains(ids, a.User.ID) {
+			return []uuid.UUID{a.User.ID}, nil
+		}
 	}
 
 	return nil, nil

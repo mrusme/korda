@@ -16,6 +16,7 @@ import (
 	"tty.fail/mrus/korda/http/routes"
 	"tty.fail/mrus/korda/http/web"
 	logicadminusers "tty.fail/mrus/korda/logic/root/admin/users"
+	logicassets "tty.fail/mrus/korda/logic/root/assets"
 	logicserver "tty.fail/mrus/korda/logic/root/server"
 	logicsessions "tty.fail/mrus/korda/logic/root/sessions"
 	logicusers "tty.fail/mrus/korda/logic/root/users"
@@ -47,6 +48,9 @@ const (
 	nightlySpec         = "0 0 * * *"
 	userDeleteCheckID   = "user-delete-check"
 	sessionCleanupID    = "session-cleanup"
+	assetDeleteCheckID  = "asset-delete-check"
+	userSyncUsageID     = "user-sync-usage"
+	missingThumbsID     = "missing-thumbnails"
 	adminStorageLabel   = "admin"
 )
 
@@ -215,6 +219,12 @@ func prepare(rt *runtime.Runtime, queue jobs.Enqueuer) (err error) {
 	if err != nil {
 		return err
 	}
+	if ff := media.DetectFFmpeg(context.Background(), mediacfg.FFmpeg); ff != nil {
+		med.SetFFmpeg(ff)
+		rt.Info("media", "ffmpeg", "path", ff.Path, "encoder", ff.Encoder, "tone mapping", ff.ToneMap)
+	} else {
+		rt.Warn("media", "ffmpeg", "not available", "videos get no thumbnails and are not transcoded")
+	}
 	rt.AddService("media", med)
 
 	rt.Debug("new", "jobs")
@@ -239,8 +249,30 @@ func registerCronFunctions(rt *runtime.Runtime) (err error) {
 		return err
 	}
 
-	return crn.Register(sessionCleanupID, nightlySpec, func(ctx context.Context) error {
+	if err = crn.Register(sessionCleanupID, nightlySpec, func(ctx context.Context) error {
 		return logicsessions.Cleanup(ctx, rt)
+	}); err != nil {
+		return err
+	}
+
+	if err = crn.Register(assetDeleteCheckID, nightlySpec, func(ctx context.Context) error {
+		servercfg, err := gh.ServerConfigFrom(rt.Config())
+		if err != nil {
+			return err
+		}
+		return logicassets.QueueExpired(ctx, rt, servercfg.TrashDays)
+	}); err != nil {
+		return err
+	}
+
+	if err = crn.Register(userSyncUsageID, nightlySpec, func(ctx context.Context) error {
+		return gh.Repositories(rt).User.SyncUsage(ctx, time.Now().UTC())
+	}); err != nil {
+		return err
+	}
+
+	return crn.Register(missingThumbsID, nightlySpec, func(ctx context.Context) error {
+		return logicassets.QueueMissingThumbnails(ctx, rt)
 	})
 }
 

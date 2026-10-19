@@ -63,7 +63,7 @@ func (r *Route) GetMyCalendarHeatmap(c fiber.Ctx) error {
 		return err
 	}
 
-	heatmap, err := logicusers.CalendarHeatmap(req.Context(), req.Auth.User.ID, in, time.Now())
+	heatmap, err := logicusers.CalendarHeatmap(req.Context(), r.Runtime, req.Auth.User.ID, in, time.Now())
 	if err != nil {
 		return err
 	}

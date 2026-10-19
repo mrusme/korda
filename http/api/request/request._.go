@@ -139,21 +139,56 @@ func (req *Request) UUID(name string) (uuid.UUID, error) {
 	return uuid.Parse(value)
 }
 
-func (req *Request) Query(dst any) error {
-	raw := make(map[string]any)
-	for key, value := range req.c.RequestCtx().QueryArgs().All() {
-		name := string(key)
-		switch existing := raw[name].(type) {
-		case nil:
-			raw[name] = string(value)
-		case string:
-			raw[name] = []any{existing, string(value)}
-		case []any:
-			raw[name] = append(existing, string(value))
+func (req *Request) Params(dst any, names ...string) error {
+	raw := NewObject()
+	for _, name := range names {
+		raw.Set(name, req.c.Params(name))
+	}
+
+	return bind(raw, true, dst, modeQuery)
+}
+
+func (req *Request) Headers(dst any, names ...string) error {
+	raw := NewObject()
+	for _, name := range names {
+		if value := req.c.Get(name); value != "" {
+			raw.Set(name, value)
 		}
 	}
 
 	return bind(raw, true, dst, modeQuery)
+}
+
+func (req *Request) Query(dst any) error {
+	raw := NewObject()
+	for key, value := range req.c.RequestCtx().QueryArgs().All() {
+		appendField(raw, string(key), string(value))
+	}
+
+	return bind(raw, true, dst, modeQuery)
+}
+
+func AppendField(o *Object, name string, value string) {
+	appendField(o, name, value)
+}
+
+func MissingBody() Issue {
+	iss, message := invalidType("object", "undefined")
+	return iss.withPath([]any{}, message)
+}
+
+func appendField(o *Object, name string, value string) {
+	existing, ok := o.Get(name)
+	switch current := existing.(type) {
+	case string:
+		o.Set(name, []any{current, value})
+	case []any:
+		o.Set(name, append(current, value))
+	default:
+		if !ok {
+			o.Set(name, value)
+		}
+	}
 }
 
 func (req *Request) Body(dst any) error {
@@ -238,35 +273,36 @@ func decodeJSON(b []byte) (any, bool, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
 
-	var raw any
-	if err := dec.Decode(&raw); err != nil {
+	var check any
+	if err := dec.Decode(&check); err != nil {
 		return nil, false, &problem.Error{Status: fiber.StatusBadRequest, Message: err.Error()}
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, false, &problem.Error{Status: fiber.StatusBadRequest, Message: "Unexpected non-whitespace character after JSON"}
 	}
 
+	raw, err := decodeOrdered(b)
+	if err != nil {
+		return nil, false, &problem.Error{Status: fiber.StatusBadRequest, Message: err.Error()}
+	}
+
 	return raw, true, nil
 }
 
-func decodeForm(b []byte) map[string]any {
+func decodeForm(b []byte) *Object {
 	var args fasthttp.Args
 	args.ParseBytes(b)
 
-	raw := make(map[string]any)
+	raw := NewObject()
 	for key, value := range args.All() {
-		name := string(key)
-		switch existing := raw[name].(type) {
-		case nil:
-			raw[name] = string(value)
-		case string:
-			raw[name] = []any{existing, string(value)}
-		case []any:
-			raw[name] = append(existing, string(value))
-		}
+		appendField(raw, string(key), string(value))
 	}
 
 	return raw
+}
+
+func Bind(raw any, dst any) error {
+	return bind(raw, true, dst, modeQuery)
 }
 
 func bind(raw any, present bool, dst any, m mode) error {

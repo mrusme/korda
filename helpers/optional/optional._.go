@@ -30,6 +30,10 @@ func (v Value[T]) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.V)
 }
 
+func (v Value[T]) IsZero() bool {
+	return !v.Set
+}
+
 func (v Value[T]) Valid() bool {
 	return v.Set && !v.Null
 }

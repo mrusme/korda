@@ -4,10 +4,14 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"tty.fail/mrus/korda/http/api/root/admin"
 	"tty.fail/mrus/korda/http/api/root/apikeys"
+	"tty.fail/mrus/korda/http/api/root/assets"
 	"tty.fail/mrus/korda/http/api/root/auth"
+	"tty.fail/mrus/korda/http/api/root/search"
 	"tty.fail/mrus/korda/http/api/root/server"
 	"tty.fail/mrus/korda/http/api/root/sessions"
+	"tty.fail/mrus/korda/http/api/root/trash"
 	"tty.fail/mrus/korda/http/api/root/users"
+	"tty.fail/mrus/korda/http/api/root/view"
 	"xn--gckvb8fzb.com/glides/http/route"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
@@ -59,6 +63,30 @@ func New(rt *runtime.Runtime, router fiber.Router) (*Route, error) {
 		return nil, err
 	}
 	r.Routes = append(r.Routes, apikeysRoute)
+
+	assetsRoute, err := assets.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, assetsRoute)
+
+	searchRoute, err := search.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, searchRoute)
+
+	viewRoute, err := view.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, viewRoute)
+
+	trashRoute, err := trash.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, trashRoute)
 
 	return r, nil
 }
