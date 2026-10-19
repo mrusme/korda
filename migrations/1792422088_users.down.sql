@@ -1,0 +1,9 @@
+DROP TABLE version_history;
+DROP TABLE system_metadata;
+DROP TABLE api_keys;
+DROP TABLE sync_checkpoints;
+DROP TABLE sessions;
+DROP TABLE user_metadata_audit;
+DROP TABLE user_metadata;
+DROP TABLE user_audit;
+DROP TABLE users;

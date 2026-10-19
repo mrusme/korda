@@ -1,0 +1,4 @@
+/_internal/**
+/build/
+/media/
+/korda.db*

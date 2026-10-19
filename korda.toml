@@ -1,0 +1,51 @@
+[General]
+Mode = "development"
+
+[Logging]
+Level = "debug"
+
+[Database]
+Path = "./korda.db"
+
+[Redis]
+Addresses = ["127.0.0.1:6379"]
+Database = 4
+
+[Web]
+BindIP             = "0.0.0.0"
+Port               = 2284
+BodyLimit          = 10737418240
+RequestTimeout     = 30
+Concurrency        = 262144
+ProxyHeader        = "" # "X-Forwarded-For"
+EnableIPValidation = false
+TrustProxy         = false
+TrustLoopback      = true
+TrustProxies       = []
+# Behind a reverse proxy, something like this:
+# TrustProxy         = true
+# TrustLoopback      = true
+# TrustProxies       = ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+ReduceMemoryUsage  = false
+ServerHeader       = ""
+
+[API]
+RateLimitAuth = 10 # logins per minute and client address, 0 disables
+CORSOrigins   = [] # browser origins that may call the API; empty means no CORS headers
+
+[[Target]]
+ID   = "jobs"
+Type = "handler"
+
+[Media]
+Location         = "./media"
+Concurrency      = 1
+ThumbnailSize    = 250
+ThumbnailQuality = 80
+
+[Server]
+ExternalDomain   = ""
+LoginPageMessage = ""
+PublicUsers      = true
+TrashDays        = 30
+UserDeleteDelay  = 7
