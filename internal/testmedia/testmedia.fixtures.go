@@ -25,6 +25,17 @@ func PlainPNG() ([]byte, error) {
 	return PNG(Pattern(400, 300))
 }
 
+func GPSJPEG() ([]byte, error) {
+	tags := ExifTags
+	tags.Model = "Fixture GPS"
+	tags.Orientation = 1
+	tags.DateTimeOriginal = "2024:07:01 12:00:00"
+	tags.SubSecTimeOriginal = ""
+	tags.OffsetTimeOriginal = ""
+
+	return JPEG(Pattern(640, 480), tags.TIFF())
+}
+
 func ExifHEIC() ([]byte, error) {
 	tags := ExifTags
 	tags.Model = "Fixture HEIC"

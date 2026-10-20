@@ -71,7 +71,11 @@ func localWall(instant time.Time, zone *string) time.Time {
 
 func ComputeDates(fileCreatedAt time.Time, tags *metadata.Tags, modified time.Time, born time.Time) Dates {
 	var zone *string
-	if tags.Zone != nil {
+	switch {
+	case tags.TZ != "":
+		name := tags.TZ
+		zone = &name
+	case tags.Zone != nil:
 		name := metadata.ZoneName(*tags.Zone)
 		zone = &name
 	}
@@ -101,7 +105,7 @@ func ComputeDates(fileCreatedAt time.Time, tags *metadata.Tags, modified time.Ti
 	case tags.IsVideo || strings.Contains(d.Tag, "UTC") || strings.HasPrefix(d.Tag, "GPS"):
 		instant = d.Wall
 	default:
-		instant = d.Instant(tags.Zone)
+		instant = tags.Instant(d)
 	}
 	instant = instant.UTC()
 

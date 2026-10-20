@@ -12,6 +12,7 @@ func TestFixturesMatchTheReferenceUploads(t *testing.T) {
 		want  string
 	}{
 		"korda-exif.jpg":     {ExifJPEG, "7lWy+xd67RvuCrGVWCyajV1LYuU="},
+		"korda-gps.jpg":      {GPSJPEG, "rkJhmunXXon4IFF4d2UWpYjhfgQ="},
 		"korda-plain.jpg":    {PlainJPEG, "fH6Q5NN0jzG5Sav36O5+hEiU6o8="},
 		"korda.png":          {PlainPNG, "RpvokZk7S0EdK8+aolHjenx6k5M="},
 		"korda-mutate-1.jpg": {func() ([]byte, error) { return Mutate(10) }, "mBDPrU3k2Hi0wjYe35Z3FA3brmc="},

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"tty.fail/mrus/korda/internal/testmedia"
+	"tty.fail/mrus/korda/services/metadata"
 )
 
 const (
@@ -307,6 +308,39 @@ func TestStatisticsAndHeatmapsCountAssets(t *testing.T) {
 		expect(t, fiber.StatusOK, `{"images":1,"videos":0,"total":1}`)
 	h.do(fiber.MethodGet, "/api/users/me/calendar-heatmap?from="+today+"&to="+today, nil, bearer(token)...).
 		expect(t, fiber.StatusOK, `{"from":"`+today+`","to":"`+today+`","series":[{"date":"`+today+`","count":1}],"totalCount":1}`)
+}
+
+func TestGPSZone(t *testing.T) {
+	h := newHarness(t)
+	token := h.admin()
+	id := h.uploadID(token, "korda-gps.jpg", fixture(t, testmedia.GPSJPEG), "2024-07-01T12:00:00.000Z", "2024-07-01T12:00:00.000Z")
+	h.runAllJobs()
+
+	want := map[string]any{
+		"fileCreatedAt":    "2024-07-01T12:00:00.000Z",
+		"localDateTime":    "2024-07-01T12:00:00.000Z",
+		"dateTimeOriginal": "2024-07-01T12:00:00+00:00",
+		"timeZone":         nil,
+	}
+	if metadata.GPSZones {
+		want["fileCreatedAt"] = "2024-07-01T10:00:00.000Z"
+		want["dateTimeOriginal"] = "2024-07-01T10:00:00+00:00"
+		want["timeZone"] = "Europe/Berlin"
+	}
+
+	info := h.do(fiber.MethodGet, "/api/assets/"+id, nil, bearer(token)...).object(t)
+	exifInfo := info["exifInfo"].(map[string]any)
+	got := map[string]any{
+		"fileCreatedAt":    info["fileCreatedAt"],
+		"localDateTime":    info["localDateTime"],
+		"dateTimeOriginal": exifInfo["dateTimeOriginal"],
+		"timeZone":         exifInfo["timeZone"],
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Errorf("%s = %v, want %v", key, got[key], value)
+		}
+	}
 }
 
 func TestAssetMetadataEndpoints(t *testing.T) {

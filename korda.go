@@ -24,6 +24,7 @@ import (
 	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/services/media"
 	"tty.fail/mrus/korda/services/mediaroot"
+	"tty.fail/mrus/korda/services/metadata"
 	"tty.fail/mrus/korda/services/repositories"
 	"tty.fail/mrus/korda/worker/targets"
 	"xn--gckvb8fzb.com/glides/cron"
@@ -225,6 +226,7 @@ func prepare(rt *runtime.Runtime, queue jobs.Enqueuer) (err error) {
 	} else {
 		rt.Warn("media", "ffmpeg", "not available", "videos get no thumbnails and are not transcoded")
 	}
+	rt.Info("media", "build tags", "heic", media.HEIC, "tzf", metadata.GPSZones)
 	rt.AddService("media", med)
 
 	rt.Debug("new", "jobs")

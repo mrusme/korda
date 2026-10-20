@@ -31,6 +31,7 @@ var capturedAtTags = []string{
 type Tags struct {
 	Dates             map[string]Date
 	Zone              *int
+	TZ                string
 	ZoneSource        string
 	Make              string
 	Model             string
@@ -65,6 +66,17 @@ type Tags struct {
 
 func newTags() *Tags {
 	return &Tags{Dates: make(map[string]Date)}
+}
+
+func (t *Tags) Instant(d Date) time.Time {
+	if d.Offset == nil && t.TZ != "" {
+		if loc, err := time.LoadLocation(t.TZ); err == nil {
+			w := d.Wall
+			return time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second(), w.Nanosecond(), loc)
+		}
+	}
+
+	return d.Instant(t.Zone)
 }
 
 func (t *Tags) FirstDate() (Date, bool) {
@@ -517,8 +529,15 @@ func (t *Tags) applyVideo(v *video.Info) {
 }
 
 func (t *Tags) inferZone() {
-	if t.Zone != nil {
+	if t.Zone != nil || t.TZ != "" {
 		return
+	}
+
+	if t.Latitude != nil && t.Longitude != nil {
+		if name, ok := gpsZone(*t.Latitude, *t.Longitude); ok {
+			t.TZ, t.ZoneSource = name, "gps"
+			return
+		}
 	}
 
 	for _, tag := range capturedAtTags {
@@ -666,9 +685,9 @@ func (t *Tags) Merge(sidecar *Tags) {
 
 	if _, ok := sidecar.FirstDate(); ok {
 		t.Dates = sidecar.Dates
-		t.Zone, t.ZoneSource = sidecar.Zone, sidecar.ZoneSource
-	} else if sidecar.Zone != nil {
-		t.Zone, t.ZoneSource = sidecar.Zone, sidecar.ZoneSource
+		t.Zone, t.TZ, t.ZoneSource = sidecar.Zone, sidecar.TZ, sidecar.ZoneSource
+	} else if sidecar.Zone != nil || sidecar.TZ != "" {
+		t.Zone, t.TZ, t.ZoneSource = sidecar.Zone, sidecar.TZ, sidecar.ZoneSource
 	}
 
 	str := func(dst *string, v string) {

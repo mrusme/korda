@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"tty.fail/mrus/korda/internal/testmedia"
+	"tty.fail/mrus/korda/services/metadata"
 )
 
 type upload struct {
@@ -238,6 +239,35 @@ func TestConformanceAssets(t *testing.T) {
 			}
 			if a != b {
 				t.Errorf("body differs\nkorda  %s\nImmich %s", a, b)
+			}
+		})
+	}
+
+	if metadata.GPSZones {
+		t.Run("gps zone", func(t *testing.T) {
+			content := fixture(t, testmedia.GPSJPEG)
+			fields := []string{"fileCreatedAt", "2024-07-01T12:00:00.000Z", "fileModifiedAt", "2024-07-01T12:00:00.000Z"}
+			immichID := immichUpload(t, base, immich.tokens["session"], "korda-gps.jpg", content, fields...).str(t, "id")
+			kordaID := h.upload(korda.tokens["session"], "korda-gps.jpg", content, fields...).str(t, "id")
+			h.runAllJobs()
+
+			deadline := time.Now().Add(60 * time.Second)
+			var want apiResponse
+			for {
+				want = immich.send(fiber.MethodGet, "/api/assets/"+immichID, "", bearer(immich.tokens["session"])...)
+				if want.Status == fiber.StatusOK && !strings.Contains(string(want.Body), `"thumbhash":null`) &&
+					strings.Contains(string(want.Body), `"dateTimeOriginal":"`) {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("Immich did not process korda-gps.jpg: %s", want.Body)
+				}
+				time.Sleep(500 * time.Millisecond)
+			}
+
+			got := korda.send(fiber.MethodGet, "/api/assets/"+kordaID, "", bearer(korda.tokens["session"])...)
+			if a, b := normalizeConformance(string(got.Body)), normalizeConformance(string(want.Body)); got.Status != want.Status || a != b {
+				t.Errorf("asset info = %d %s\nImmich %d %s", got.Status, a, want.Status, b)
 			}
 		})
 	}
