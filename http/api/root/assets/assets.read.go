@@ -14,13 +14,15 @@ func Detailed(req *request.Request, d *logicassets.Details) view.Asset {
 		Owner:     d.Owner,
 		Exif:      d.Exif,
 		Tags:      true,
+		TagList:   d.Tags,
 		WithStack: true,
+		Stack:     d.Stack,
 	})
 }
 
 func (r *Route) GetAssetInfo(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "getAssetInfo")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetRead}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetRead, SharedLink: true}); err != nil {
 		return err
 	}
 
@@ -32,6 +34,15 @@ func (r *Route) GetAssetInfo(c fiber.Ctx) error {
 	d, err := logicassets.Get(req.Context(), r.Runtime, req.Auth, id)
 	if err != nil {
 		return err
+	}
+
+	if link := req.Auth.SharedLink; link != nil {
+		if !link.ShowExif {
+			return req.Respond(fiber.StatusOK, view.NewStrippedAsset(d.Asset, false))
+		}
+		out := Detailed(req, d)
+		out.Owner = nil
+		return req.Respond(fiber.StatusOK, out)
 	}
 
 	return req.Respond(fiber.StatusOK, Detailed(req, d))

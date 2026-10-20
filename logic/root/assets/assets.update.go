@@ -289,6 +289,11 @@ func UpdateAll(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *BulkU
 	if err := repos.Asset.UpdateAll(ctx, ids, u, at); err != nil {
 		return err
 	}
+	if in.Visibility != nil && *in.Visibility == asset.VisibilityLocked {
+		if err := repos.Album.RemoveAssetsFromAll(ctx, ids, at); err != nil {
+			return err
+		}
+	}
 
 	if writeSidecar {
 		sidecarWrite(rt, ids...)

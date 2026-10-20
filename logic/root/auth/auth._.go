@@ -27,6 +27,7 @@ type Requirement struct {
 	Permission   permission.Permission
 	NoPermission bool
 	Admin        bool
+	SharedLink   bool
 }
 
 func (r Requirement) permission() permission.Permission {

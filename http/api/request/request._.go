@@ -29,6 +29,7 @@ const (
 	CookieAccessToken     = "immich_access_token"
 	CookieAuthType        = "immich_auth_type"
 	CookieIsAuthenticated = "immich_is_authenticated"
+	CookieSharedLinkToken = "immich_shared_link_token"
 )
 
 type Request struct {

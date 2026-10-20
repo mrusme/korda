@@ -1,13 +1,19 @@
 package request
 
 import (
+	"net/url"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"tty.fail/mrus/korda/http/api/problem"
 )
 
-const cookieMaxAge = 400 * 24 * time.Hour
+const (
+	cookieMaxAge     = 400 * 24 * time.Hour
+	sharedLinkMaxAge = 24 * time.Hour
+)
 
 func (req *Request) Respond(status int, v any) error {
 	body, err := problem.Encode(v)
@@ -57,4 +63,37 @@ func (req *Request) ClearAuthCookies() {
 			Expires: time.Unix(0, 0),
 		})
 	}
+}
+
+func (req *Request) SharedLinkTokens() []string {
+	raw := req.c.Cookies(CookieSharedLinkToken)
+	if raw == "" {
+		return []string{}
+	}
+	if len(raw) >= 2 && raw[0] == '"' && raw[len(raw)-1] == '"' {
+		raw = raw[1 : len(raw)-1]
+	}
+	if decoded, err := url.PathUnescape(raw); err == nil {
+		raw = decoded
+	}
+
+	return strings.Split(raw, ",")
+}
+
+func (req *Request) AddSharedLinkToken(token string) {
+	tokens := req.SharedLinkTokens()
+	if !slices.Contains(tokens, token) {
+		tokens = append(tokens, token)
+	}
+
+	req.c.Cookie(&fiber.Cookie{
+		Name:     CookieSharedLinkToken,
+		Value:    encodeURIComponent(strings.Join(tokens, ",")),
+		Path:     "/",
+		MaxAge:   int(sharedLinkMaxAge / time.Second),
+		Expires:  time.Now().Add(sharedLinkMaxAge),
+		HTTPOnly: true,
+		Secure:   req.c.Secure(),
+		SameSite: fiber.CookieSameSiteLaxMode,
+	})
 }

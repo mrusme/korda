@@ -15,6 +15,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/models/auth"
 	modelsync "tty.fail/mrus/korda/models/sync"
+	"tty.fail/mrus/korda/models/synccheckpoint"
 	reposync "tty.fail/mrus/korda/services/repositories/sync"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
@@ -33,29 +34,33 @@ type Line struct {
 }
 
 type Plan struct {
-	reset       bool
-	nowID       string
-	userID      uuid.UUID
-	types       []modelsync.RequestType
-	checkpoints map[modelsync.EntityType]string
+	reset     bool
+	nowID     string
+	userID    uuid.UUID
+	sessionID uuid.UUID
+	types     []modelsync.RequestType
+	acks      map[modelsync.EntityType]modelsync.Ack
 }
 
 var checkpointTypes = map[modelsync.RequestType][]modelsync.EntityType{
-	modelsync.ReqAuthUsersV1:         {modelsync.AuthUserV1},
-	modelsync.ReqAuthUsersV2:         {modelsync.AuthUserV2},
-	modelsync.ReqUsersV1:             {modelsync.UserDeleteV1, modelsync.UserV1},
-	modelsync.ReqPartnersV1:          {modelsync.PartnerDeleteV1, modelsync.PartnerV1},
-	modelsync.ReqAssetsV2:            {modelsync.AssetDeleteV1, modelsync.AssetV2},
-	modelsync.ReqStacksV1:            {modelsync.StackDeleteV1, modelsync.StackV1},
-	modelsync.ReqPartnerAssetsV2:     {modelsync.PartnerAssetDeleteV1, modelsync.PartnerAssetV2},
-	modelsync.ReqPartnerStacksV1:     {modelsync.PartnerStackDeleteV1, modelsync.PartnerStackV1},
-	modelsync.ReqAlbumsV1:            {modelsync.AlbumDeleteV1, modelsync.AlbumV1},
-	modelsync.ReqAlbumsV2:            {modelsync.AlbumDeleteV1, modelsync.AlbumV2},
-	modelsync.ReqAlbumUsersV1:        {modelsync.AlbumUserDeleteV1, modelsync.AlbumUserV1},
-	modelsync.ReqAlbumToAssetsV1:     {modelsync.AlbumToAssetDeleteV1, modelsync.AlbumToAssetV1},
-	modelsync.ReqAssetExifsV1:        {modelsync.AssetExifV1},
+	modelsync.ReqAuthUsersV1:     {modelsync.AuthUserV1},
+	modelsync.ReqAuthUsersV2:     {modelsync.AuthUserV2},
+	modelsync.ReqUsersV1:         {modelsync.UserDeleteV1, modelsync.UserV1},
+	modelsync.ReqPartnersV1:      {modelsync.PartnerDeleteV1, modelsync.PartnerV1},
+	modelsync.ReqAssetsV2:        {modelsync.AssetDeleteV1, modelsync.AssetV2},
+	modelsync.ReqStacksV1:        {modelsync.StackDeleteV1, modelsync.StackV1},
+	modelsync.ReqPartnerAssetsV2: {modelsync.PartnerAssetDeleteV1, modelsync.PartnerAssetBackfillV2, modelsync.PartnerAssetV2},
+	modelsync.ReqPartnerStacksV1: {modelsync.PartnerStackDeleteV1, modelsync.PartnerStackBackfillV1, modelsync.PartnerStackV1},
+	modelsync.ReqAlbumAssetsV2:   {modelsync.AlbumAssetBackfillV2, modelsync.AlbumAssetUpdateV2, modelsync.AlbumAssetCreateV2},
+	modelsync.ReqAlbumsV1:        {modelsync.AlbumDeleteV1, modelsync.AlbumV1},
+	modelsync.ReqAlbumsV2:        {modelsync.AlbumDeleteV1, modelsync.AlbumV2},
+	modelsync.ReqAlbumUsersV1:    {modelsync.AlbumUserDeleteV1, modelsync.AlbumUserBackfillV1, modelsync.AlbumUserV1},
+	modelsync.ReqAlbumToAssetsV1: {modelsync.AlbumToAssetDeleteV1, modelsync.AlbumToAssetBackfillV1, modelsync.AlbumToAssetV1},
+	modelsync.ReqAssetExifsV1:    {modelsync.AssetExifV1},
+	modelsync.ReqAlbumAssetExifsV1: {modelsync.AlbumAssetExifBackfillV1, modelsync.AlbumAssetExifUpdateV1,
+		modelsync.AlbumAssetExifCreateV1},
 	modelsync.ReqAssetOcrV1:          {modelsync.AssetOcrDeleteV1, modelsync.AssetOcrV1},
-	modelsync.ReqPartnerAssetExifsV1: {modelsync.PartnerAssetExifV1},
+	modelsync.ReqPartnerAssetExifsV1: {modelsync.PartnerAssetExifBackfillV1, modelsync.PartnerAssetExifV1},
 	modelsync.ReqMemoriesV1:          {modelsync.MemoryDeleteV1, modelsync.MemoryV1},
 	modelsync.ReqMemoriesV2:          {modelsync.MemoryDeleteV1, modelsync.MemoryV2},
 	modelsync.ReqMemoryToAssetsV1:    {modelsync.MemoryToAssetDeleteV1, modelsync.MemoryToAssetV1},
@@ -66,6 +71,16 @@ var checkpointTypes = map[modelsync.RequestType][]modelsync.EntityType{
 	modelsync.ReqUserMetadataV1:      {modelsync.UserMetadataDeleteV1, modelsync.UserMetadataV1},
 	modelsync.ReqAssetMetadataV1:     {modelsync.AssetMetadataDeleteV1, modelsync.AssetMetadataV1},
 	modelsync.ReqAssetEditsV1:        {modelsync.AssetEditDeleteV1, modelsync.AssetEditV1},
+}
+
+var backfillTypes = map[modelsync.EntityType]bool{
+	modelsync.PartnerAssetBackfillV2:     true,
+	modelsync.PartnerAssetExifBackfillV1: true,
+	modelsync.PartnerStackBackfillV1:     true,
+	modelsync.AlbumAssetBackfillV2:       true,
+	modelsync.AlbumAssetExifBackfillV1:   true,
+	modelsync.AlbumUserBackfillV1:        true,
+	modelsync.AlbumToAssetBackfillV1:     true,
 }
 
 func now() time.Time {
@@ -161,9 +176,10 @@ func Prepare(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *StreamI
 	}
 
 	plan := &Plan{
-		nowID:       uuidV7At(time.Now().Add(-time.Millisecond)).String(),
-		userID:      a.User.ID,
-		checkpoints: make(map[modelsync.EntityType]string),
+		nowID:     uuidV7At(time.Now().Add(-time.Millisecond)).String(),
+		userID:    a.User.ID,
+		sessionID: sessionID,
+		acks:      make(map[modelsync.EntityType]modelsync.Ack),
 	}
 	for _, t := range modelsync.Order {
 		if !slices.Contains(in.Types, t) {
@@ -175,23 +191,52 @@ func Prepare(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *StreamI
 			if !ok {
 				continue
 			}
-			if ack.UpdateID == nil {
-				return nil, fmt.Errorf("%w: %s", ErrInvalidCheckpoint, e)
-			}
-			id, err := uuid.Parse(*ack.UpdateID)
+			checked, err := checkAck(e, ack)
 			if err != nil {
-				return nil, fmt.Errorf("%w: %s", ErrInvalidCheckpoint, e)
+				return nil, err
 			}
-			plan.checkpoints[e] = id.String()
+			plan.acks[e] = checked
 		}
 	}
 
 	return plan, nil
 }
 
+func canonical(id *string, optional bool, extra ...string) (*string, bool) {
+	if id == nil {
+		return nil, optional
+	}
+	if slices.Contains(extra, *id) {
+		return id, true
+	}
+	parsed, err := uuid.Parse(*id)
+	if err != nil {
+		return nil, false
+	}
+	s := parsed.String()
+
+	return &s, true
+}
+
+func checkAck(t modelsync.EntityType, ack modelsync.Ack) (modelsync.Ack, error) {
+	backfill := backfillTypes[t]
+	updateID, ok := canonical(ack.UpdateID, backfill)
+	if !ok {
+		return ack, fmt.Errorf("%w: %s", ErrInvalidCheckpoint, t)
+	}
+	extraID := ack.ExtraID
+	if backfill {
+		if extraID, ok = canonical(ack.ExtraID, true, modelsync.CompleteID); !ok {
+			return ack, fmt.Errorf("%w: %s", ErrInvalidCheckpoint, t)
+		}
+	}
+
+	return modelsync.Ack{Type: ack.Type, UpdateID: updateID, ExtraID: extraID}, nil
+}
+
 func (p *Plan) after(t modelsync.EntityType) *string {
-	if id, ok := p.checkpoints[t]; ok {
-		return &id
+	if ack, ok := p.acks[t]; ok {
+		return ack.UpdateID
 	}
 
 	return nil
@@ -222,6 +267,83 @@ func identity[T any](row T) any {
 	return row
 }
 
+func firstOnly(emit func(Line) error, first Line) func(Line) error {
+	sent := false
+
+	return func(l Line) error {
+		if !sent {
+			sent = true
+			if err := emit(first); err != nil {
+				return err
+			}
+		}
+
+		return emit(l)
+	}
+}
+
+type backfill[T any] struct {
+	kind    modelsync.EntityType
+	bound   modelsync.EntityType
+	members func(after *string) ([]reposync.Membership, error)
+	rows    func(m reposync.Membership, b reposync.Backfill) ([]T, error)
+	key     func(T) string
+}
+
+func (bf backfill[T]) run(ctx context.Context, rt *runtime.Runtime, p *Plan, emit func(Line) error) error {
+	checkpoint, hasCheckpoint := p.acks[bf.kind]
+	members, err := bf.members(checkpoint.UpdateID)
+	if err != nil {
+		return err
+	}
+
+	bound, hasBound := p.acks[bf.bound]
+	if !hasBound {
+		if len(members) == 0 {
+			return nil
+		}
+		last := members[len(members)-1].CreateID
+		return gh.Repositories(rt).SyncCheckpoint.Upsert(ctx, p.sessionID, []synccheckpoint.Checkpoint{{
+			Type: string(bf.kind), Ack: modelsync.FormatAck(bf.kind, last, modelsync.CompleteID),
+		}}, now())
+	}
+
+	for _, m := range members {
+		named := hasCheckpoint && checkpoint.UpdateID != nil && *checkpoint.UpdateID == m.CreateID
+		var start *string
+		if named {
+			if checkpoint.ExtraID != nil && *checkpoint.ExtraID == modelsync.CompleteID {
+				continue
+			}
+			start = checkpoint.ExtraID
+		}
+
+		b := reposync.Backfill{After: start, End: *bound.UpdateID, Before: p.nowID, Limit: pageSize}
+		for {
+			rows, err := bf.rows(m, b)
+			if err != nil {
+				return err
+			}
+			for _, row := range rows {
+				if err = emit(Line{Type: bf.kind, Data: row, Ack: modelsync.FormatAck(bf.kind, m.CreateID, bf.key(row))}); err != nil {
+					return err
+				}
+			}
+			if len(rows) < pageSize {
+				break
+			}
+			last := bf.key(rows[len(rows)-1])
+			b.After = &last
+		}
+
+		if err = emit(Line{Type: modelsync.SyncAckV1, Ack: modelsync.FormatAck(bf.kind, m.CreateID, modelsync.CompleteID)}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (p *Plan) Stream(ctx context.Context, rt *runtime.Runtime, emit func(Line) error) error {
 	if p.reset {
 		return emit(Line{Type: modelsync.SyncResetV1, Ack: modelsync.FormatAck(modelsync.SyncResetV1, modelsync.ResetID)})
@@ -229,7 +351,7 @@ func (p *Plan) Stream(ctx context.Context, rt *runtime.Runtime, emit func(Line) 
 
 	for _, t := range p.types {
 		if handler, ok := handlers[t]; ok {
-			if err := handler(ctx, gh.Repositories(rt).Sync, p, emit); err != nil {
+			if err := handler(ctx, rt, gh.Repositories(rt).Sync, p, emit); err != nil {
 				return err
 			}
 		}

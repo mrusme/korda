@@ -76,6 +76,27 @@ func NullablePostgres(t sql.Null[time.Time]) *Postgres {
 	return &value
 }
 
+func FormatPostgres(t time.Time) string {
+	return t.UTC().Truncate(time.Microsecond).Format(PostgresLayout)
+}
+
 func (t Postgres) MarshalJSON() ([]byte, error) {
-	return strconv.AppendQuote(nil, t.UTC().Truncate(time.Microsecond).Format(PostgresLayout)), nil
+	return strconv.AppendQuote(nil, FormatPostgres(t.Time)), nil
+}
+
+type Stamp struct {
+	time.Time
+	Postgres bool
+}
+
+func NewStamp(t time.Time, postgres bool) Stamp {
+	return Stamp{Time: t.UTC(), Postgres: postgres}
+}
+
+func (t Stamp) MarshalJSON() ([]byte, error) {
+	if t.Postgres {
+		return Postgres{Time: t.Time}.MarshalJSON()
+	}
+
+	return Time{Time: t.Time}.MarshalJSON()
 }

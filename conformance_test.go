@@ -26,6 +26,7 @@ type compareMode int
 const (
 	compareExact compareMode = iota
 	compareShape
+	compareUnordered
 )
 
 type step struct {
@@ -70,7 +71,7 @@ func (s *side) run(t *testing.T, st step) apiResponse {
 	if st.capture != "" && res.Status < 300 {
 		var body map[string]any
 		if err := json.Unmarshal(res.Body, &body); err == nil {
-			for _, field := range []string{"id", "secret", "token"} {
+			for _, field := range []string{"id", "secret", "token", "key"} {
 				if v, ok := body[field].(string); ok {
 					s.vars[st.capture+"."+field] = v
 				}

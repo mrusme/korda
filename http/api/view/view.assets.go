@@ -16,7 +16,9 @@ import (
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetexif"
 	"tty.fail/mrus/korda/models/assetmetadata"
+	"tty.fail/mrus/korda/models/tag"
 	"tty.fail/mrus/korda/models/user"
+	repoasset "tty.fail/mrus/korda/services/repositories/asset"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
 
@@ -61,20 +63,20 @@ type AssetStack struct {
 }
 
 type Tag struct {
-	ID        string        `json:"id"`
-	ParentID  *string       `json:"parentId,omitempty"`
-	Name      string        `json:"name"`
-	Value     string        `json:"value"`
-	CreatedAt jsontime.Time `json:"createdAt"`
-	UpdatedAt jsontime.Time `json:"updatedAt"`
-	Color     *string       `json:"color,omitempty"`
+	ID        string         `json:"id"`
+	ParentID  *string        `json:"parentId,omitempty"`
+	Name      string         `json:"name"`
+	Value     string         `json:"value"`
+	CreatedAt jsontime.Stamp `json:"createdAt"`
+	UpdatedAt jsontime.Stamp `json:"updatedAt"`
+	Color     *string        `json:"color,omitempty"`
 }
 
 type Person struct{}
 
 type Asset struct {
 	ID               string                     `json:"id"`
-	CreatedAt        jsontime.Time              `json:"createdAt"`
+	CreatedAt        jsontime.Stamp             `json:"createdAt"`
 	OwnerID          string                     `json:"ownerId"`
 	Owner            *AssetOwner                `json:"owner,omitempty"`
 	LibraryID        *string                    `json:"libraryId"`
@@ -83,10 +85,10 @@ type Asset struct {
 	OriginalFileName string                     `json:"originalFileName"`
 	OriginalMimeType string                     `json:"originalMimeType"`
 	Thumbhash        *string                    `json:"thumbhash"`
-	FileCreatedAt    jsontime.Time              `json:"fileCreatedAt"`
-	FileModifiedAt   jsontime.Time              `json:"fileModifiedAt"`
-	LocalDateTime    jsontime.Time              `json:"localDateTime"`
-	UpdatedAt        jsontime.Time              `json:"updatedAt"`
+	FileCreatedAt    jsontime.Stamp             `json:"fileCreatedAt"`
+	FileModifiedAt   jsontime.Stamp             `json:"fileModifiedAt"`
+	LocalDateTime    jsontime.Stamp             `json:"localDateTime"`
+	UpdatedAt        jsontime.Stamp             `json:"updatedAt"`
 	IsFavorite       bool                       `json:"isFavorite"`
 	IsArchived       bool                       `json:"isArchived"`
 	IsTrashed        bool                       `json:"isTrashed"`
@@ -108,10 +110,13 @@ type Asset struct {
 }
 
 type AssetDetails struct {
-	Owner     *user.User
-	Exif      *assetexif.Exif
-	Tags      bool
-	WithStack bool
+	Owner      *user.User
+	Exif       *assetexif.Exif
+	Tags       bool
+	TagList    []tag.Tag
+	WithStack  bool
+	Stack      *repoasset.StackSummary
+	Aggregated bool
 }
 
 func nullableID(v uuid.NullUUID) *string {
@@ -182,7 +187,7 @@ func NewExif(e *assetexif.Exif) *Exif {
 func NewAsset(a *asset.Asset, viewer uuid.UUID, d AssetDetails) Asset {
 	out := Asset{
 		ID:               id(a.ID),
-		CreatedAt:        time3(a.CreatedAt),
+		CreatedAt:        jsontime.NewStamp(a.CreatedAt, d.Aggregated),
 		OwnerID:          id(a.OwnerID),
 		LibraryID:        nullableID(a.LibraryID),
 		Type:             a.Type,
@@ -190,10 +195,10 @@ func NewAsset(a *asset.Asset, viewer uuid.UUID, d AssetDetails) Asset {
 		OriginalFileName: a.OriginalFileName,
 		OriginalMimeType: mimetypes.Lookup(a.OriginalFileName),
 		Thumbhash:        base64Bytes(a.Thumbhash),
-		FileCreatedAt:    time3(a.FileCreatedAt),
-		FileModifiedAt:   time3(a.FileModifiedAt),
-		LocalDateTime:    time3(a.LocalDateTime),
-		UpdatedAt:        time3(a.UpdatedAt),
+		FileCreatedAt:    jsontime.NewStamp(a.FileCreatedAt, d.Aggregated),
+		FileModifiedAt:   jsontime.NewStamp(a.FileModifiedAt, d.Aggregated),
+		LocalDateTime:    jsontime.NewStamp(a.LocalDateTime, d.Aggregated),
+		UpdatedAt:        jsontime.NewStamp(a.UpdatedAt, d.Aggregated),
 		IsFavorite:       viewer == a.OwnerID && a.IsFavorite,
 		IsArchived:       a.Visibility == asset.VisibilityArchive,
 		IsTrashed:        a.DeletedAt.Valid,
@@ -218,11 +223,19 @@ func NewAsset(a *asset.Asset, viewer uuid.UUID, d AssetDetails) Asset {
 		out.ExifInfo = NewExif(d.Exif)
 	}
 	if d.Tags {
-		tags := []Tag{}
+		tags := make([]Tag, 0, len(d.TagList))
+		for i := range d.TagList {
+			tags = append(tags, NewTag(&d.TagList[i], true))
+		}
 		out.Tags = &tags
 	}
 	if d.WithStack {
 		out.Stack = optional.Value[AssetStack]{Set: true, Null: true}
+		if d.Stack != nil {
+			out.Stack = optional.Of(AssetStack{
+				ID: id(d.Stack.ID), PrimaryAssetID: id(d.Stack.PrimaryAssetID), AssetCount: d.Stack.AssetCount,
+			})
+		}
 	}
 
 	return out

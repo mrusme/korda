@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"golang.org/x/text/collate"
-	"golang.org/x/text/language"
 	"tty.fail/mrus/korda/errs"
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/helpers/checksum"
+	"tty.fail/mrus/korda/helpers/collation"
 	"tty.fail/mrus/korda/logic/helpers/access"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/auth"
@@ -36,8 +35,17 @@ type Page struct {
 	NextCursor *string
 }
 
-func userIDs(a *auth.Auth) []uuid.UUID {
-	return []uuid.UUID{a.User.ID}
+func userIDs(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, v *asset.Visibility) ([]uuid.UUID, error) {
+	if v != nil && *v == asset.VisibilityLocked {
+		return []uuid.UUID{a.User.ID}, nil
+	}
+
+	partners, err := gh.Repositories(rt).Partner.InTimeline(ctx, a.User.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return append([]uuid.UUID{a.User.ID}, partners...), nil
 }
 
 func size(s *int64, fallback int) int {
@@ -103,6 +111,9 @@ func flat(a *auth.Auth, b *search.Base) repoasset.Flat {
 	}
 	if b.TagIDs.Valid() {
 		f.TagIDs = parseIDs(b.TagIDs.V)
+	}
+	if b.TagIDs.Set && b.TagIDs.Null {
+		f.NoTags = true
 	}
 	if b.LibraryID.Valid() {
 		if id, err := uuid.Parse(b.LibraryID.V); err == nil {
@@ -192,7 +203,26 @@ func scopeV3(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, filter *sea
 		}
 	}
 
-	return f, repoasset.Scope{UserIDs: userIDs(a), OwnerID: a.User.ID}, nil
+	confined := f.AlbumConfined()
+	if !confined && len(f.Or) > 0 {
+		confined = true
+		for i := range f.Or {
+			confined = confined && f.Or[i].AlbumConfined()
+		}
+	}
+	if a.SharedLink != nil && !confined {
+		return nil, repoasset.Scope{}, errs.ErrSharedLinkSearch
+	}
+
+	users := []uuid.UUID{a.User.ID}
+	if !confined {
+		var err error
+		if users, err = userIDs(ctx, rt, a, nil); err != nil {
+			return nil, repoasset.Scope{}, err
+		}
+	}
+
+	return f, repoasset.Scope{UserIDs: users, OwnerID: a.User.ID}, nil
 }
 
 func conditions(branches []search.Branch) []search.Conditions {
@@ -271,12 +301,19 @@ func Metadata(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *search
 	}
 
 	f := flat(a, &in.Base)
-	if len(f.AlbumIDs) > 0 {
+	switch {
+	case len(f.AlbumIDs) > 0:
 		if err := access.Require(ctx, rt, a, permission.AlbumRead, f.AlbumIDs...); err != nil {
 			return nil, err
 		}
-	} else {
-		f.UserIDs = userIDs(a)
+	case a.SharedLink != nil:
+		return nil, errs.ErrSharedLinkSearch
+	default:
+		users, err := userIDs(ctx, rt, a, in.Visibility)
+		if err != nil {
+			return nil, err
+		}
+		f.UserIDs = users
 	}
 
 	if in.Checksum != nil {
@@ -336,7 +373,11 @@ func Statistics(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *sear
 	}
 
 	f := flat(a, &in.Base)
-	f.UserIDs = userIDs(a)
+	users, err := userIDs(ctx, rt, a, in.Visibility)
+	if err != nil {
+		return 0, err
+	}
+	f.UserIDs = users
 	if in.Description != nil {
 		f.Description = *in.Description
 	}
@@ -361,7 +402,11 @@ func Random(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *search.R
 	}
 
 	f := flat(a, &in.Base)
-	f.UserIDs = userIDs(a)
+	users, err := userIDs(ctx, rt, a, in.Visibility)
+	if err != nil {
+		return nil, err
+	}
+	f.UserIDs = users
 	f.WithDeleted = in.WithDeleted != nil && *in.WithDeleted
 	f.WithExif = in.WithExif != nil && *in.WithExif
 	f.WithStacked = in.WithStacked
@@ -375,7 +420,11 @@ func Large(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *search.La
 	}
 
 	f := flat(a, &in.Base)
-	f.UserIDs = userIDs(a)
+	users, err := userIDs(ctx, rt, a, in.Visibility)
+	if err != nil {
+		return nil, err
+	}
+	f.UserIDs = users
 	f.WithDeleted = in.WithDeleted != nil && *in.WithDeleted
 	f.WithExif = true
 
@@ -402,7 +451,12 @@ func Recent(ctx context.Context, rt *runtime.Runtime, a *auth.Auth) ([]asset.Ass
 }
 
 func Cities(ctx context.Context, rt *runtime.Runtime, a *auth.Auth) ([]asset.Asset, error) {
-	return gh.Repositories(rt).Asset.ByCity(ctx, userIDs(a))
+	users, err := userIDs(ctx, rt, a, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return gh.Repositories(rt).Asset.ByCity(ctx, users)
 }
 
 var suggestionColumns = map[search.SuggestionType]string{
@@ -437,13 +491,16 @@ func Suggestions(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *sea
 		narrow["make"], narrow["model"] = value(in.Make), value(in.Model)
 	}
 
-	values, err := gh.Repositories(rt).Asset.Suggestions(ctx, userIDs(a), suggestionColumns[in.Type], narrow)
+	users, err := userIDs(ctx, rt, a, nil)
+	if err != nil {
+		return nil, err
+	}
+	values, err := gh.Repositories(rt).Asset.Suggestions(ctx, users, suggestionColumns[in.Type], narrow)
 	if err != nil {
 		return nil, err
 	}
 
-	c := collate.New(language.MustParse("en-u-ka-shifted"))
-	c.SortStrings(values)
+	collation.Sort(values)
 
 	out := make([]*string, 0, len(values)+1)
 	for i := range values {

@@ -36,6 +36,9 @@ func Delete(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID
 	}
 
 	at := now()
+	if err := gh.Repositories(rt).Album.SoftDeleteOwned(ctx, id, at); err != nil {
+		return nil, err
+	}
 	deleted, err := gh.Repositories(rt).User.Update(ctx, id, repouser.Update{
 		Status:    optional.Of(status),
 		DeletedAt: optional.Of(at),
@@ -58,7 +61,12 @@ func Restore(ctx context.Context, rt *runtime.Runtime, id uuid.UUID) (*user.User
 		return nil, err
 	}
 
-	return gh.Repositories(rt).User.Restore(ctx, id, now())
+	at := now()
+	if err := gh.Repositories(rt).Album.RestoreOwned(ctx, id, at); err != nil {
+		return nil, err
+	}
+
+	return gh.Repositories(rt).User.Restore(ctx, id, at)
 }
 
 func QueueDueDeletions(ctx context.Context, rt *runtime.Runtime) error {

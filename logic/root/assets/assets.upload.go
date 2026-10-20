@@ -24,8 +24,10 @@ import (
 	"tty.fail/mrus/korda/models/assetmetadata"
 	"tty.fail/mrus/korda/models/auth"
 	"tty.fail/mrus/korda/models/permission"
+	"tty.fail/mrus/korda/models/sharedlink"
 	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/services/mediaroot"
+	repoalbum "tty.fail/mrus/korda/services/repositories/album"
 	repoasset "tty.fail/mrus/korda/services/repositories/asset"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
@@ -270,6 +272,11 @@ func Upload(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *UploadIn
 		if findErr != nil {
 			return res, findErr
 		}
+		if a.SharedLink != nil {
+			if err = addToSharedLink(ctx, rt, a.SharedLink, existing.ID); err != nil {
+				return res, err
+			}
+		}
 		return Result{ID: existing.ID, Duplicate: true}, nil
 	}
 	if err != nil {
@@ -295,7 +302,36 @@ func Upload(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *UploadIn
 		err = nil
 	}
 
+	if a.SharedLink != nil {
+		if err = addToSharedLink(ctx, rt, a.SharedLink, stored.ID); err != nil {
+			return res, err
+		}
+	}
+
 	return Result{ID: stored.ID}, nil
+}
+
+func RequireUploadAccess(a *auth.Auth) error {
+	if a.SharedLink != nil && !a.SharedLink.AllowUpload {
+		return errs.ErrUnauthorized
+	}
+
+	return nil
+}
+
+func addToSharedLink(ctx context.Context, rt *runtime.Runtime, link *sharedlink.SharedLink, assetID uuid.UUID) error {
+	repos := gh.Repositories(rt)
+	if !link.AlbumID.Valid {
+		return repos.SharedLink.AttachAsset(ctx, link.ID, assetID)
+	}
+
+	if _, err := repos.Album.Get(ctx, link.AlbumID.UUID); errors.Is(err, errs.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	return repos.Album.AddAssets(ctx, []repoalbum.Pair{{AlbumID: link.AlbumID.UUID, AssetID: assetID}}, now())
 }
 
 func assetType(path string) asset.Type {

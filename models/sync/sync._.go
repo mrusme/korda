@@ -170,7 +170,10 @@ func IsEntityType(s string) bool {
 	return false
 }
 
-const ResetID = "reset"
+const (
+	ResetID    = "reset"
+	CompleteID = "complete"
+)
 
 type Ack struct {
 	Type     string

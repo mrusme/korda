@@ -2,8 +2,11 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"tty.fail/mrus/korda/errs"
 	gh "tty.fail/mrus/korda/helpers"
@@ -11,6 +14,7 @@ import (
 	"tty.fail/mrus/korda/helpers/useragent"
 	"tty.fail/mrus/korda/models/auth"
 	"tty.fail/mrus/korda/models/permission"
+	"tty.fail/mrus/korda/models/sharedlink"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
 
@@ -30,6 +34,11 @@ func Authenticate(
 		return nil, errs.ErrForbidden
 	}
 
+	if a.SharedLink != nil && !req.SharedLink {
+		rt.Warn("auth", "denied", "reason", "non-shared route", "uri", uri)
+		return nil, errs.ErrForbidden
+	}
+
 	if a.APIKey != nil && !req.NoPermission &&
 		!permission.IsGranted([]permission.Permission{req.permission()}, a.APIKey.Permissions) {
 		return nil, fmt.Errorf("%w: %s", errs.ErrMissingPermission, req.permission())
@@ -41,9 +50,9 @@ func Authenticate(
 func validate(ctx context.Context, rt *runtime.Runtime, creds Credentials) (*auth.Auth, error) {
 	switch {
 	case creds.ShareKey != "":
-		return nil, errs.ErrInvalidShareKey
+		return validateSharedLink(ctx, rt, creds.ShareKey, true)
 	case creds.ShareSlug != "":
-		return nil, errs.ErrInvalidShareSlug
+		return validateSharedLink(ctx, rt, creds.ShareSlug, false)
 	case creds.SessionToken != "":
 		return validateSession(ctx, rt, creds)
 	case creds.APIKey != "":
@@ -115,4 +124,71 @@ func validateAPIKey(ctx context.Context, rt *runtime.Runtime, key string) (*auth
 	}
 
 	return &auth.Auth{User: u, APIKey: k}, nil
+}
+
+func DecodeShareKey(key string) ([]byte, bool) {
+	if len(key) == 100 {
+		decoded, err := hex.DecodeString(key)
+		return decoded, err == nil
+	}
+
+	var b strings.Builder
+	for _, r := range key {
+		if r == '=' {
+			break
+		}
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		case r == '+':
+			b.WriteRune('-')
+		case r == '/':
+			b.WriteRune('_')
+		}
+	}
+	cleaned := b.String()
+	if len(cleaned)%4 == 1 {
+		cleaned = cleaned[:len(cleaned)-1]
+	}
+
+	decoded, err := base64.RawURLEncoding.DecodeString(cleaned)
+	return decoded, err == nil
+}
+
+func validateSharedLink(ctx context.Context, rt *runtime.Runtime, value string, byKey bool) (*auth.Auth, error) {
+	repos := gh.Repositories(rt)
+	invalid := errs.ErrInvalidShareSlug
+	var (
+		link *sharedlink.SharedLink
+		err  error
+	)
+	if byKey {
+		invalid = errs.ErrInvalidShareKey
+		key, ok := DecodeShareKey(value)
+		if !ok {
+			return nil, invalid
+		}
+		link, err = repos.SharedLink.ByKey(ctx, key)
+	} else {
+		link, err = repos.SharedLink.BySlug(ctx, value)
+	}
+	if errors.Is(err, errs.ErrNoRows) {
+		return nil, invalid
+	}
+	if err != nil {
+		return nil, err
+	}
+	if link.ExpiresAt.Valid && !link.ExpiresAt.V.After(now()) {
+		return nil, invalid
+	}
+
+	u, err := repos.User.Get(ctx, link.UserID, true)
+	if errors.Is(err, errs.ErrNoRows) {
+		return nil, invalid
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &auth.Auth{User: u, SharedLink: link}, nil
 }

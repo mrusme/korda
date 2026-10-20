@@ -1,12 +1,14 @@
 package refine
 
 type Issue struct {
-	Path    []any
-	Message string
+	Path         []any
+	Message      string
+	MessageFirst bool
 }
 
 type Fields interface {
 	Has(name string) bool
+	Get(name string) (any, bool)
 }
 
 type Refiner interface {
@@ -25,4 +27,8 @@ func At(path []any, message string) Issue {
 
 func Root(message string) Issue {
 	return Issue{Path: []any{}, Message: message}
+}
+
+func Added(message string) Issue {
+	return Issue{Path: []any{}, Message: message, MessageFirst: true}
 }

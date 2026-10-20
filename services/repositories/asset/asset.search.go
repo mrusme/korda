@@ -69,6 +69,7 @@ type Flat struct {
 	Visibility       string
 	AlbumIDs         []uuid.UUID
 	TagIDs           []uuid.UUID
+	NoTags           bool
 	PersonIDs        []uuid.UUID
 	CreatedBefore    *time.Time
 	CreatedAfter     *time.Time
@@ -115,8 +116,21 @@ func (f Flat) build(b *builder) {
 		b.where = append(b.where, `a.visibility = `+b.arg(f.Visibility))
 	}
 
-	if len(f.AlbumIDs) > 0 || len(f.TagIDs) > 0 || len(f.PersonIDs) > 0 || f.OCR != "" {
+	if len(f.PersonIDs) > 0 || f.OCR != "" {
 		b.where = append(b.where, `0 = 1`)
+	}
+	if len(f.AlbumIDs) > 0 {
+		b.where = append(b.where, inAllAlbums(b, f.AlbumIDs))
+	} else if f.IsNotInAlbum {
+		b.where = append(b.where, `NOT EXISTS (SELECT 1 FROM album_assets x WHERE x.asset_id = a.id)`)
+	}
+	if len(f.TagIDs) > 0 {
+		b.where = append(b.where, `a.id IN (`+tagClosure(b, f.TagIDs)+`
+			SELECT ta.asset_id FROM tag_assets ta JOIN closure c ON c.descendant = ta.tag_id
+			GROUP BY ta.asset_id HAVING count(DISTINCT c.ancestor) >= `+strconv.Itoa(len(f.TagIDs))+`)`)
+	}
+	if f.NoTags {
+		b.where = append(b.where, `NOT EXISTS (SELECT 1 FROM tag_assets x WHERE x.asset_id = a.id)`)
 	}
 
 	for _, c := range []struct {
@@ -380,6 +394,78 @@ func membership(preds *[]string, f *search.IDsFilter) {
 	}
 }
 
+func uuids(ids []string) []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(ids))
+	seen := map[uuid.UUID]bool{}
+	for _, id := range ids {
+		if parsed, err := uuid.Parse(id); err == nil && !seen[parsed] {
+			seen[parsed] = true
+			out = append(out, parsed)
+		}
+	}
+
+	return out
+}
+
+func inAllAlbums(b *builder, ids []uuid.UUID) string {
+	return `a.id IN (SELECT x.asset_id FROM album_assets x WHERE x.album_id IN ` + b.list(anyList(ids)) + `
+		GROUP BY x.asset_id HAVING count(DISTINCT x.album_id) = ` + strconv.Itoa(len(ids)) + `)`
+}
+
+func tagClosure(b *builder, ids []uuid.UUID) string {
+	return `WITH RECURSIVE closure(ancestor, descendant) AS (
+		SELECT id, id FROM tags WHERE id IN ` + b.list(anyList(ids)) + `
+		UNION SELECT c.ancestor, t.id FROM tags t JOIN closure c ON t.parent_id = c.descendant
+	)`
+}
+
+func albumMembership(b *builder, preds *[]string, f *search.IDsFilter) {
+	if f == nil {
+		return
+	}
+	anyOf := func(ids []uuid.UUID) string {
+		return `EXISTS (SELECT 1 FROM album_assets x WHERE x.asset_id = a.id AND x.album_id IN ` + b.list(anyList(ids)) + `)`
+	}
+	if f.Any != nil {
+		*preds = append(*preds, anyOf(uuids(f.Any)))
+	}
+	if f.All != nil {
+		ids := uuids(f.All)
+		if len(ids) == 1 {
+			*preds = append(*preds, anyOf(ids))
+		} else {
+			*preds = append(*preds, inAllAlbums(b, ids))
+		}
+	}
+	if f.None != nil {
+		*preds = append(*preds, "NOT "+anyOf(uuids(f.None)))
+	}
+}
+
+func tagMembership(b *builder, preds *[]string, f *search.IDsFilter) {
+	if f == nil {
+		return
+	}
+	matching := func(ids []uuid.UUID, having string) string {
+		return `a.id IN (` + tagClosure(b, ids) + `
+			SELECT ta.asset_id FROM tag_assets ta JOIN closure c ON c.descendant = ta.tag_id` + having + `)`
+	}
+	if f.Any != nil {
+		*preds = append(*preds, matching(uuids(f.Any), ""))
+	}
+	if f.All != nil {
+		ids := uuids(f.All)
+		having := ""
+		if len(ids) > 1 {
+			having = ` GROUP BY ta.asset_id HAVING count(DISTINCT c.ancestor) = ` + strconv.Itoa(len(ids))
+		}
+		*preds = append(*preds, matching(ids, having))
+	}
+	if f.None != nil {
+		*preds = append(*preds, "NOT "+matching(uuids(f.None), ""))
+	}
+}
+
 func checksums(values []string) []any {
 	out := make([]any, 0, len(values))
 	for _, v := range values {
@@ -419,9 +505,9 @@ func branch(b *builder, c *search.Conditions) []string {
 		}
 	}
 	exists(&preds, c.IsEncoded, `SELECT 1 FROM asset_files ef WHERE ef.asset_id = a.id AND ef.type = 'encoded_video'`)
-	nothing(&preds, c.HasAlbums)
+	exists(&preds, c.HasAlbums, `SELECT 1 FROM album_assets x WHERE x.asset_id = a.id`)
 	nothing(&preds, c.HasPeople)
-	nothing(&preds, c.HasTags)
+	exists(&preds, c.HasTags, `SELECT 1 FROM tag_assets x WHERE x.asset_id = a.id`)
 
 	stringFilter(b, &preds, "e.city", c.City)
 	stringFilter(b, &preds, "e.state", c.State)
@@ -455,9 +541,9 @@ func branch(b *builder, c *search.Conditions) []string {
 		comparison[time.Time](b, &preds, "a.deleted_at", utcOpt(t.Eq), utcOpt(t.Ne), utc(t.Lt), utc(t.Lte), utc(t.Gt), utc(t.Gte), nil, nil)
 	}
 
-	membership(&preds, c.AlbumIDs)
+	albumMembership(b, &preds, c.AlbumIDs)
 	membership(&preds, c.PersonIDs)
-	membership(&preds, c.TagIDs)
+	tagMembership(b, &preds, c.TagIDs)
 
 	if cs := c.Checksum; cs != nil {
 		var eq, ne optional.Value[any]

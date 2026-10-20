@@ -4,11 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/google/uuid"
 	"tty.fail/mrus/korda/models/asset"
+	"tty.fail/mrus/korda/services/repositories/query"
 	"xn--gckvb8fzb.com/glides/services/database"
 )
 
@@ -23,23 +22,11 @@ func (repo *Repository) ByChecksum(ctx context.Context, ownerID uuid.UUID, check
 	)
 }
 
-const chunkSize = 1000
-
-func placeholders[T any](args *[]any, values []T) string {
-	marks := make([]string, 0, len(values))
-	for _, v := range values {
-		*args = append(*args, v)
-		marks = append(marks, "$"+strconv.Itoa(len(*args)))
-	}
-
-	return strings.Join(marks, ", ")
-}
-
 func (repo *Repository) ByChecksums(ctx context.Context, ownerID uuid.UUID, checksums [][]byte) ([]asset.Asset, error) {
 	out := []asset.Asset{}
-	for chunk := range slices.Chunk(checksums, chunkSize) {
+	for chunk := range slices.Chunk(checksums, query.ChunkSize) {
 		args := []any{ownerID}
-		marks := placeholders(&args, chunk)
+		marks := query.Placeholders(&args, chunk)
 
 		found, err := database.Rows[asset.Asset](ctx, repo.db, `SELECT `+columns+` FROM assets
 			WHERE owner_id = $1 AND checksum IN (`+marks+`)`,
@@ -56,9 +43,9 @@ func (repo *Repository) ByChecksums(ctx context.Context, ownerID uuid.UUID, chec
 
 func (repo *Repository) OwnedBy(ctx context.Context, ownerID uuid.UUID, ids []uuid.UUID, elevated bool) ([]uuid.UUID, error) {
 	out := []uuid.UUID{}
-	for chunk := range slices.Chunk(ids, chunkSize) {
+	for chunk := range slices.Chunk(ids, query.ChunkSize) {
 		args := []any{ownerID}
-		marks := placeholders(&args, chunk)
+		marks := query.Placeholders(&args, chunk)
 
 		query := `SELECT id FROM assets WHERE owner_id = $1 AND id IN (` + marks + `)`
 		if !elevated {

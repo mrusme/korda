@@ -121,7 +121,7 @@ func (r *Route) GetAssetEdits(c fiber.Ctx) error {
 
 func (r *Route) GetMainPlaylist(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "getMainPlaylist")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView, SharedLink: true}); err != nil {
 		return err
 	}
 	c.Set(fiber.HeaderCacheControl, "no-cache")
@@ -139,7 +139,7 @@ func (r *Route) GetMainPlaylist(c fiber.Ctx) error {
 
 func (r *Route) GetMediaPlaylist(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "getMediaPlaylist")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView, SharedLink: true}); err != nil {
 		return err
 	}
 	c.Set(fiber.HeaderCacheControl, "no-cache")
@@ -161,7 +161,7 @@ func (r *Route) GetMediaPlaylist(c fiber.Ctx) error {
 
 func (r *Route) GetSegment(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "getSegment")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView, SharedLink: true}); err != nil {
 		return err
 	}
 
@@ -179,7 +179,7 @@ func (r *Route) GetSegment(c fiber.Ctx) error {
 
 func (r *Route) EndSession(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "endSession")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView, SharedLink: true}); err != nil {
 		return err
 	}
 

@@ -7,6 +7,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetexif"
+	"tty.fail/mrus/korda/models/tag"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
 
@@ -63,9 +64,21 @@ func NewAssetList(ctx context.Context, rt *runtime.Runtime, list []asset.Asset, 
 		}
 	}
 
+	var tags map[uuid.UUID][]tag.Tag
+	if withTags {
+		ids := make([]uuid.UUID, 0, len(list))
+		for _, a := range list {
+			ids = append(ids, a.ID)
+		}
+		var err error
+		if tags, err = gh.Repositories(rt).Tag.ForAssets(ctx, ids); err != nil {
+			return nil, err
+		}
+	}
+
 	out := make([]Asset, 0, len(list))
 	for i := range list {
-		d := AssetDetails{Tags: withTags}
+		d := AssetDetails{Tags: withTags, TagList: tags[list[i].ID]}
 		if withExif {
 			d.Exif = exifs[list[i].ID]
 		}

@@ -50,10 +50,22 @@ var (
 			source:  `/^(init\.mp4|seg_\d+\.m4s)$/`,
 			message: "Invalid HLS segment filename",
 		},
+		"hexColor": newPattern(`^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$`, ""),
+		"tagName": {
+			re:      regexp.MustCompile(`^[^/]*$`),
+			source:  `/^[^/]*$/`,
+			message: `Tag name cannot contain slash characters ("/")`,
+		},
 	}
 	datetimeParts = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})$`)
 
 	fieldRefinements = map[string]func(raw any) string{
+		"albumUserId": func(raw any) string {
+			if s, _ := raw.(string); s == "me" || uuidPattern.re.MatchString(s) {
+				return ""
+			}
+			return `Must be a UUID v4 or "me"`
+		},
 		"rating": func(raw any) string {
 			if n, ok := raw.(json.Number); ok {
 				if f, err := strconv.ParseFloat(string(n), 64); err == nil && f == 0 {
@@ -171,7 +183,12 @@ func (w *walker) report(path []any, iss Issue, message string) {
 
 func (w *walker) add(prefix []any, issues ...refine.Issue) {
 	for _, iss := range issues {
-		w.issues = append(w.issues, Custom(append(append([]any{}, prefix...), iss.Path...), iss.Message))
+		path := append(append([]any{}, prefix...), iss.Path...)
+		if iss.MessageFirst {
+			w.issues = append(w.issues, newIssue("message", iss.Message, "code", "custom", "path", path))
+			continue
+		}
+		w.issues = append(w.issues, Custom(path, iss.Message))
 	}
 }
 
@@ -287,7 +304,15 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 		return w.object(path, raw, present, t)
 
 	case t.Kind() == reflect.String:
-		return w.string(path, raw, present, r)
+		start := len(w.issues)
+		v, keep := w.string(path, raw, present, r)
+		if r.refine != "" && !w.abortedSince(start) && len(w.issues) == start {
+			if message := fieldRefinements[r.refine](raw); message != "" {
+				w.issues = append(w.issues, Custom(path, message))
+				return nil, false
+			}
+		}
+		return v, keep
 
 	case t.Kind() == reflect.Bool:
 		if w.mode == modeQuery && !r.boolean {

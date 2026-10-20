@@ -3,15 +3,22 @@ package repositories
 import (
 	"slices"
 
+	"tty.fail/mrus/korda/services/repositories/activity"
+	"tty.fail/mrus/korda/services/repositories/album"
 	"tty.fail/mrus/korda/services/repositories/apikey"
 	"tty.fail/mrus/korda/services/repositories/asset"
 	"tty.fail/mrus/korda/services/repositories/assetexif"
 	"tty.fail/mrus/korda/services/repositories/assetfile"
 	"tty.fail/mrus/korda/services/repositories/assetmetadata"
+	"tty.fail/mrus/korda/services/repositories/memory"
+	"tty.fail/mrus/korda/services/repositories/partner"
 	"tty.fail/mrus/korda/services/repositories/session"
+	"tty.fail/mrus/korda/services/repositories/sharedlink"
+	"tty.fail/mrus/korda/services/repositories/stack"
 	reposync "tty.fail/mrus/korda/services/repositories/sync"
 	"tty.fail/mrus/korda/services/repositories/synccheckpoint"
 	"tty.fail/mrus/korda/services/repositories/systemmetadata"
+	"tty.fail/mrus/korda/services/repositories/tag"
 	"tty.fail/mrus/korda/services/repositories/user"
 	"tty.fail/mrus/korda/services/repositories/usermetadata"
 	"tty.fail/mrus/korda/services/repositories/versionhistory"
@@ -32,6 +39,13 @@ type Repositories struct {
 	AssetMetadata  *assetmetadata.Repository
 	SyncCheckpoint *synccheckpoint.Repository
 	Sync           *reposync.Repository
+	Album          *album.Repository
+	Partner        *partner.Repository
+	Stack          *stack.Repository
+	Tag            *tag.Repository
+	SharedLink     *sharedlink.Repository
+	Activity       *activity.Repository
+	Memory         *memory.Repository
 }
 
 type startable interface {
@@ -79,6 +93,27 @@ func New(db *database.Database) (repos *Repositories, err error) {
 	if repos.Sync, err = reposync.New(db); err != nil {
 		return nil, err
 	}
+	if repos.Album, err = album.New(db); err != nil {
+		return nil, err
+	}
+	if repos.Partner, err = partner.New(db); err != nil {
+		return nil, err
+	}
+	if repos.Stack, err = stack.New(db); err != nil {
+		return nil, err
+	}
+	if repos.Tag, err = tag.New(db); err != nil {
+		return nil, err
+	}
+	if repos.SharedLink, err = sharedlink.New(db); err != nil {
+		return nil, err
+	}
+	if repos.Activity, err = activity.New(db); err != nil {
+		return nil, err
+	}
+	if repos.Memory, err = memory.New(db); err != nil {
+		return nil, err
+	}
 
 	return repos, nil
 }
@@ -97,6 +132,13 @@ func (repos *Repositories) all() []startable {
 		repos.AssetMetadata,
 		repos.SyncCheckpoint,
 		repos.Sync,
+		repos.Album,
+		repos.Partner,
+		repos.Stack,
+		repos.Tag,
+		repos.SharedLink,
+		repos.Activity,
+		repos.Memory,
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/helpers/mimetypes"
 	"tty.fail/mrus/korda/helpers/optional"
+	logictags "tty.fail/mrus/korda/logic/root/tags"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetexif"
 	"tty.fail/mrus/korda/models/assetfile"
@@ -261,6 +262,9 @@ func Extract(ctx context.Context, rt *runtime.Runtime, p jobs.AssetPayload) erro
 	if err = writeExif(ctx, rt, updated, tags, dates, size, modified, at); err != nil {
 		return err
 	}
+	if err = applyTagList(ctx, rt, updated); err != nil {
+		return err
+	}
 
 	if updated.Type == asset.TypeImage && (tags.MotionPhoto || tags.MicroVideo) {
 		if err := extractMotion(ctx, rt, updated, tags, dates, abs, size, modified); err != nil {
@@ -371,8 +375,11 @@ func linkLivePhotos(ctx context.Context, rt *runtime.Runtime, a *asset.Asset, ci
 	if _, err = repos.Asset.Update(ctx, photo.ID, repoasset.Update{LivePhotoVideoID: optional.Of(motion.ID)}, at); err != nil {
 		return err
 	}
+	if err = repos.Asset.SetVisibility(ctx, []uuid.UUID{motion.ID}, asset.VisibilityHidden, at); err != nil {
+		return err
+	}
 
-	return repos.Asset.SetVisibility(ctx, []uuid.UUID{motion.ID}, asset.VisibilityHidden, at)
+	return repos.Album.RemoveAssetsFromAll(ctx, []uuid.UUID{motion.ID}, at)
 }
 
 func extractMotion(ctx context.Context, rt *runtime.Runtime, still *asset.Asset, tags *metadata.Tags, dates Dates, abs string, size int64, modified time.Time) error {
@@ -483,4 +490,20 @@ func extractMotion(ctx context.Context, rt *runtime.Runtime, still *asset.Asset,
 	}
 
 	return err
+}
+
+func applyTagList(ctx context.Context, rt *runtime.Runtime, a *asset.Asset) error {
+	exif, err := Exif(ctx, rt, a.ID)
+	if err != nil {
+		return err
+	}
+
+	var keywords []string
+	if exif != nil && exif.Tags.Valid {
+		if err = json.Unmarshal([]byte(exif.Tags.V), &keywords); err != nil {
+			return err
+		}
+	}
+
+	return logictags.ApplyKeywords(ctx, rt, a.ID, a.OwnerID, keywords)
 }

@@ -92,16 +92,17 @@ type AssetExif struct {
 	UpdateID           string
 }
 
+const exifColumns = `e.asset_id, e.description, e.exif_image_width, e.exif_image_height, e.file_size_in_byte,
+	e.orientation, e.date_time_original, e.modify_date, e.time_zone, e.latitude, e.longitude, e.projection_type,
+	e.city, e.state, e.country, e.make, e.model, e.lens_model, e.f_number, e.focal_length, e.iso, e.exposure_time,
+	e.profile_description, e.rating, e.fps, e.update_id`
+
 func (repo *Repository) AssetExifs(ctx context.Context, ownerID uuid.UUID, b Bounds) ([]AssetExif, error) {
 	args := []any{}
 	where := b.where("e.update_id", &args)
 	args = append(args, ownerID)
 
-	return database.Rows[AssetExif](ctx, repo.db, `SELECT e.asset_id, e.description, e.exif_image_width,
-		e.exif_image_height, e.file_size_in_byte, e.orientation, e.date_time_original, e.modify_date, e.time_zone,
-		e.latitude, e.longitude, e.projection_type, e.city, e.state, e.country, e.make, e.model, e.lens_model,
-		e.f_number, e.focal_length, e.iso, e.exposure_time, e.profile_description, e.rating, e.fps, e.update_id
-		FROM asset_exif e
+	return database.Rows[AssetExif](ctx, repo.db, `SELECT `+exifColumns+` FROM asset_exif e
 		WHERE `+where+` AND e.asset_id IN (SELECT id FROM assets WHERE owner_id = $`+strconv.Itoa(len(args))+`)`+
 		b.tail("e.update_id"),
 		args...,
@@ -145,7 +146,9 @@ func (repo *Repository) AssetMetadataDeletes(ctx context.Context, ownerID uuid.U
 	)
 }
 
-var auditTables = []string{"user_audit", "user_metadata_audit", "asset_audit", "asset_metadata_audit"}
+var auditTables = []string{"album_audit", "album_user_audit", "album_asset_audit", "asset_audit",
+	"asset_metadata_audit", "memory_audit", "memory_asset_audit", "partner_audit", "stack_audit", "user_audit",
+	"user_metadata_audit"}
 
 func (repo *Repository) CleanupAudit(ctx context.Context, before time.Time) (int64, error) {
 	var total int64

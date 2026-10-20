@@ -11,6 +11,7 @@ import (
 	"tty.fail/mrus/korda/models/assetexif"
 	"tty.fail/mrus/korda/models/auth"
 	"tty.fail/mrus/korda/models/permission"
+	"tty.fail/mrus/korda/models/tag"
 	"tty.fail/mrus/korda/models/user"
 	repoasset "tty.fail/mrus/korda/services/repositories/asset"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -20,6 +21,8 @@ type Details struct {
 	Asset *asset.Asset
 	Exif  *assetexif.Exif
 	Owner *user.User
+	Stack *repoasset.StackSummary
+	Tags  []tag.Tag
 }
 
 func Exif(ctx context.Context, rt *runtime.Runtime, assetID uuid.UUID) (*assetexif.Exif, error) {
@@ -46,8 +49,27 @@ func Load(ctx context.Context, rt *runtime.Runtime, id uuid.UUID) (*Details, err
 	if errors.Is(err, errs.ErrNoRows) {
 		err = nil
 	}
+	if err != nil {
+		return nil, err
+	}
 
-	return d, err
+	if a.StackID.Valid {
+		d.Stack, err = gh.Repositories(rt).Asset.StackSummary(ctx, a.StackID.UUID)
+		if errors.Is(err, errs.ErrNoRows) {
+			err = nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	tags, err := gh.Repositories(rt).Tag.ForAssets(ctx, []uuid.UUID{id})
+	if err != nil {
+		return nil, err
+	}
+	d.Tags = tags[id]
+
+	return d, nil
 }
 
 func Get(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID) (*Details, error) {

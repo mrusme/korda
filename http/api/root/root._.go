@@ -2,14 +2,21 @@ package root
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"tty.fail/mrus/korda/http/api/root/activities"
 	"tty.fail/mrus/korda/http/api/root/admin"
+	"tty.fail/mrus/korda/http/api/root/albums"
 	"tty.fail/mrus/korda/http/api/root/apikeys"
 	"tty.fail/mrus/korda/http/api/root/assets"
 	"tty.fail/mrus/korda/http/api/root/auth"
+	"tty.fail/mrus/korda/http/api/root/memories"
+	"tty.fail/mrus/korda/http/api/root/partners"
 	"tty.fail/mrus/korda/http/api/root/search"
 	"tty.fail/mrus/korda/http/api/root/server"
 	"tty.fail/mrus/korda/http/api/root/sessions"
+	"tty.fail/mrus/korda/http/api/root/sharedlinks"
+	"tty.fail/mrus/korda/http/api/root/stacks"
 	"tty.fail/mrus/korda/http/api/root/sync"
+	"tty.fail/mrus/korda/http/api/root/tags"
 	"tty.fail/mrus/korda/http/api/root/trash"
 	"tty.fail/mrus/korda/http/api/root/users"
 	"tty.fail/mrus/korda/http/api/root/view"
@@ -47,6 +54,12 @@ func New(rt *runtime.Runtime, router fiber.Router) (*Route, error) {
 	}
 	r.Routes = append(r.Routes, sessionsRoute)
 
+	sharedLinksRoute, err := sharedlinks.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, sharedLinksRoute)
+
 	usersRoute, err := users.New(r.Runtime, r.Router)
 	if err != nil {
 		return nil, err
@@ -70,6 +83,42 @@ func New(rt *runtime.Runtime, router fiber.Router) (*Route, error) {
 		return nil, err
 	}
 	r.Routes = append(r.Routes, assetsRoute)
+
+	activitiesRoute, err := activities.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, activitiesRoute)
+
+	albumsRoute, err := albums.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, albumsRoute)
+
+	memoriesRoute, err := memories.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, memoriesRoute)
+
+	partnersRoute, err := partners.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, partnersRoute)
+
+	stacksRoute, err := stacks.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, stacksRoute)
+
+	tagsRoute, err := tags.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, tagsRoute)
 
 	searchRoute, err := search.New(r.Runtime, r.Router)
 	if err != nil {

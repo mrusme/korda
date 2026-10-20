@@ -43,7 +43,7 @@ func New(rt *runtime.Runtime, router fiber.Router) (*Route, error) {
 
 func (r *Route) SearchAssets(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "searchAssets")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetRead}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetRead, SharedLink: true}); err != nil {
 		return err
 	}
 

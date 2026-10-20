@@ -16,7 +16,7 @@ const HeaderChecksum = "x-immich-checksum"
 
 func (r *Route) UploadAsset(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "uploadAsset")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetUpload}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetUpload, SharedLink: true}); err != nil {
 		return err
 	}
 
@@ -46,6 +46,10 @@ func (r *Route) UploadAsset(c fiber.Ctx) error {
 		if (p.Field == logicassets.FieldAssetData && file != nil) ||
 			(p.Field == logicassets.FieldSidecarData && sidecar != nil) {
 			return fmt.Errorf("%w - %s", errs.ErrUnexpectedFileField, p.Field)
+		}
+
+		if err := logicassets.RequireUploadAccess(req.Auth); err != nil {
+			return err
 		}
 
 		name := p.Filename

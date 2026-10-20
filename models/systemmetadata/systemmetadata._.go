@@ -4,6 +4,7 @@ type Key string
 
 const (
 	AdminOnboarding Key = "admin-onboarding"
+	MemoriesState   Key = "memories-state"
 )
 
 type SystemMetadata struct {

@@ -38,7 +38,7 @@ func Thumbnail(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.U
 	if in.Size != nil {
 		size = *in.Size
 	}
-	edited := in.Edited != nil && *in.Edited
+	edited := a.SharedLink != nil || in.Edited != nil && *in.Edited
 
 	found, err := gh.Repositories(rt).Asset.ForThumbnail(ctx, id, string(size), edited)
 	if err != nil {
@@ -55,7 +55,11 @@ func Thumbnail(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.U
 		return nil, errs.ErrAssetMediaNotFound
 	}
 
-	name := mimetypes.Base(found.OriginalFileName) + "_" + string(size) + filepath.Ext(found.Path.V)
+	base := mimetypes.Base(found.OriginalFileName)
+	if a.SharedLink != nil && !a.SharedLink.ShowExif {
+		base = id.String()
+	}
+	name := base + "_" + string(size) + filepath.Ext(found.Path.V)
 
 	return file(rt, found.Path.V, name)
 }
@@ -65,7 +69,7 @@ func Original(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UU
 		return nil, errs.ErrNotFound
 	}
 
-	found, err := gh.Repositories(rt).Asset.ForOriginal(ctx, id, in.Edited != nil && *in.Edited)
+	found, err := gh.Repositories(rt).Asset.ForOriginal(ctx, id, a.SharedLink != nil || in.Edited != nil && *in.Edited)
 	if err != nil {
 		return nil, errs.ErrNotFound
 	}

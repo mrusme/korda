@@ -12,7 +12,7 @@ import (
 
 func (r *Route) ViewAsset(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "viewAsset")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView, SharedLink: true}); err != nil {
 		return err
 	}
 
@@ -47,7 +47,7 @@ func (r *Route) ViewAsset(c fiber.Ctx) error {
 
 func (r *Route) DownloadAsset(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "downloadAsset")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetDownload}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetDownload, SharedLink: true}); err != nil {
 		return err
 	}
 
@@ -70,7 +70,7 @@ func (r *Route) DownloadAsset(c fiber.Ctx) error {
 
 func (r *Route) PlayAssetVideo(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "playAssetVideo")
-	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView}); err != nil {
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetView, SharedLink: true}); err != nil {
 		return err
 	}
 

@@ -73,6 +73,27 @@ func Copy(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *CopyInput)
 	}
 
 	at := now()
+	if in.Albums == nil || *in.Albums {
+		if err = repos.Album.CopyAssets(ctx, sourceID, targetID, at); err != nil {
+			return err
+		}
+	}
+	if in.SharedLinks == nil || *in.SharedLinks {
+		if err = repos.SharedLink.CopyAssets(ctx, sourceID, targetID); err != nil {
+			return err
+		}
+	}
+	if (in.Stack == nil || *in.Stack) && source.StackID.Valid {
+		if target.StackID.Valid {
+			err = repos.Stack.Merge(ctx, source.StackID.UUID, target.StackID.UUID, at)
+		} else {
+			_, err = repos.Asset.Update(ctx, targetID, repoasset.Update{StackID: optional.Of(source.StackID.UUID)}, at)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
 	if in.Favorite == nil || *in.Favorite {
 		if _, err = repos.Asset.Update(ctx, targetID, repoasset.Update{IsFavorite: optional.Of(source.IsFavorite)}, at); err != nil {
 			return err

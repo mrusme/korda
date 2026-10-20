@@ -50,3 +50,25 @@ func (b Bounds) tail(column string) string {
 
 	return tail
 }
+
+type Backfill struct {
+	After  *string
+	End    string
+	Before string
+	Limit  int
+}
+
+func (b Backfill) where(column string, args *[]any) string {
+	*args = append(*args, b.Before, b.End)
+	clause := column + ` < $` + strconv.Itoa(len(*args)-1) + ` AND ` + column + ` <= $` + strconv.Itoa(len(*args))
+	if b.After != nil {
+		*args = append(*args, *b.After)
+		clause += ` AND ` + column + ` > $` + strconv.Itoa(len(*args))
+	}
+
+	return clause
+}
+
+func (b Backfill) tail(column string) string {
+	return Bounds{Limit: b.Limit}.tail(column)
+}
