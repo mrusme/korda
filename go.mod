@@ -9,7 +9,6 @@ require (
 	github.com/hibiken/asynq v0.26.0
 	github.com/kovidgoyal/imaging v1.9.0
 	github.com/ringsaturn/tzf v1.2.5
-	github.com/samber/slog-fiber v1.22.2
 	github.com/valyala/fasthttp v1.74.0
 	go.n16f.net/thumbhash v1.1.0
 	golang.org/x/image v0.47.0
@@ -55,8 +54,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/wneessen/go-mail v0.8.1 // indirect
 	github.com/xmppo/go-xmpp v0.3.7 // indirect
-	go.opentelemetry.io/otel v1.44.0 // indirect
-	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.12.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.60.0 // indirect

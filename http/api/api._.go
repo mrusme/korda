@@ -10,12 +10,12 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
-	slogfiber "github.com/samber/slog-fiber"
 	"tty.fail/mrus/korda/errs"
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/http/api/problem"
 	"tty.fail/mrus/korda/http/api/root"
 	"tty.fail/mrus/korda/http/helpers/deadline"
+	"tty.fail/mrus/korda/http/helpers/requestlog"
 	"tty.fail/mrus/korda/http/routes"
 	"xn--gckvb8fzb.com/glides/http/route"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -72,17 +72,10 @@ func (srv *API) loadMiddlewares() {
 		Header:    CorrelationHeader,
 		Generator: correlationID,
 	}))
-	srv.app.Use(slogfiber.NewWithConfig(srv.rt.Logger(), slogfiber.Config{
-		DefaultLevel:       slog.LevelDebug,
-		ClientErrorLevel:   slog.LevelInfo,
-		ServerErrorLevel:   slog.LevelError,
-		WithRequestID:      false,
-		WithRequestBody:    false,
-		WithRequestHeader:  false,
-		WithResponseBody:   false,
-		WithResponseHeader: false,
-		WithSpanID:         true,
-		WithTraceID:        srv.rt.IsDevelopmentMode(),
+	srv.app.Use(requestlog.New(srv.rt.Logger(), requestlog.Config{
+		DefaultLevel:     slog.LevelDebug,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelError,
 	}))
 	srv.app.Use(recover.New())
 	srv.app.Use(deadline.New(srv.timeout))

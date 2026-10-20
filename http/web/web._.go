@@ -31,15 +31,16 @@ func New(rt *runtime.Runtime, cfg gh.WebConfig, apiConfig gh.APIConfig) (srv *We
 	}
 
 	srv.app = fiber.New(fiber.Config{
-		AppName:            "korda",
-		StrictRouting:      false,
-		CaseSensitive:      false,
-		BodyLimit:          cfg.BodyLimit,
-		Concurrency:        cfg.Concurrency,
-		StreamRequestBody:  true,
-		ProxyHeader:        cfg.ProxyHeader,
-		EnableIPValidation: cfg.EnableIPValidation,
-		TrustProxy:         cfg.TrustProxy,
+		AppName:                      "korda",
+		StrictRouting:                false,
+		CaseSensitive:                false,
+		BodyLimit:                    cfg.BodyLimit,
+		Concurrency:                  cfg.Concurrency,
+		StreamRequestBody:            true,
+		DisablePreParseMultipartForm: true,
+		ProxyHeader:                  cfg.ProxyHeader,
+		EnableIPValidation:           cfg.EnableIPValidation,
+		TrustProxy:                   cfg.TrustProxy,
 		TrustProxyConfig: fiber.TrustProxyConfig{
 			Loopback: cfg.TrustLoopback,
 			Proxies:  cfg.TrustProxies,
