@@ -9,6 +9,7 @@ import (
 	"tty.fail/mrus/korda/http/api/root/search"
 	"tty.fail/mrus/korda/http/api/root/server"
 	"tty.fail/mrus/korda/http/api/root/sessions"
+	"tty.fail/mrus/korda/http/api/root/sync"
 	"tty.fail/mrus/korda/http/api/root/trash"
 	"tty.fail/mrus/korda/http/api/root/users"
 	"tty.fail/mrus/korda/http/api/root/view"
@@ -87,6 +88,12 @@ func New(rt *runtime.Runtime, router fiber.Router) (*Route, error) {
 		return nil, err
 	}
 	r.Routes = append(r.Routes, trashRoute)
+
+	syncRoute, err := sync.New(r.Runtime, r.Router)
+	if err != nil {
+		return nil, err
+	}
+	r.Routes = append(r.Routes, syncRoute)
 
 	return r, nil
 }

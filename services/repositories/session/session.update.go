@@ -48,3 +48,24 @@ func (repo *Repository) LockAll(ctx context.Context, userID uuid.UUID, now time.
 
 	return err
 }
+
+func (repo *Repository) ResetSync(ctx context.Context, id uuid.UUID, now time.Time) error {
+	tx, err := repo.db.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.End(ctx)
+
+	if _, err = database.Exec(ctx, tx, `UPDATE sessions
+		SET is_pending_sync_reset = 0, updated_at = $1, update_id = $2
+		WHERE id = $3`,
+		now, uuid.Must(uuid.NewV7()), id,
+	); err != nil {
+		return err
+	}
+	if _, err = database.Exec(ctx, tx, `DELETE FROM sync_checkpoints WHERE session_id = $1`, id); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}

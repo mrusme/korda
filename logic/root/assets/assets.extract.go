@@ -230,10 +230,6 @@ func Extract(ctx context.Context, rt *runtime.Runtime, p jobs.AssetPayload) erro
 	}
 
 	at := now()
-	if err = writeExif(ctx, rt, a, tags, dates, size, modified, at); err != nil {
-		return err
-	}
-
 	width, height := validInt(tags.Width), validInt(tags.Height)
 	if metadata.Sidewards(tags.Orientation) {
 		width, height = height, width
@@ -260,6 +256,9 @@ func Extract(ctx context.Context, rt *runtime.Runtime, p jobs.AssetPayload) erro
 
 	updated, err := repos.Asset.Update(ctx, a.ID, u, at)
 	if err != nil {
+		return err
+	}
+	if err = writeExif(ctx, rt, updated, tags, dates, size, modified, at); err != nil {
 		return err
 	}
 

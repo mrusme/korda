@@ -57,6 +57,16 @@ func TestFromRendersValidationIssues(t *testing.T) {
 	}
 }
 
+func TestEncodeWritesLineSeparatorsAsJSONStringifyDoes(t *testing.T) {
+	encoded, err := Encode(Body{Message: "a\u2028b\u2029c\\u2028\\\u2029"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "{\"message\":\"a\u2028b\u2029c\\\\u2028\\\\\u2029\"}"; string(encoded) != want {
+		t.Errorf("Encode = %q, want %q", encoded, want)
+	}
+}
+
 func TestEncodeKeepsHTMLAndDropsTheNewline(t *testing.T) {
 	encoded, err := Encode(Body{Message: "Cannot GET /api/nope?x=<b>&y"})
 	if err != nil {

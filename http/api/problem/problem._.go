@@ -99,6 +99,9 @@ var mappings = []mapping{
 	{errs.ErrSameSourceAndTarget, fiber.StatusBadRequest},
 	{errs.ErrDuplicateItems, fiber.StatusBadRequest},
 	{errs.ErrMetadataNotFound, fiber.StatusBadRequest},
+	{errs.ErrSyncAPIKey, fiber.StatusForbidden},
+	{errs.ErrSyncTypeDeprecated, fiber.StatusBadRequest},
+	{errs.ErrInvalidAckType, fiber.StatusBadRequest},
 	{errs.ErrRealtimeTranscoding, fiber.StatusBadRequest},
 	{errs.ErrSmartSearchDisabled, fiber.StatusBadRequest},
 	{errs.ErrInvalidCursor, fiber.StatusBadRequest},
@@ -163,7 +166,30 @@ func Encode(v any) ([]byte, error) {
 		return nil, err
 	}
 
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+	return unescapeSeparators(bytes.TrimSuffix(buf.Bytes(), []byte("\n"))), nil
+}
+
+func unescapeSeparators(b []byte) []byte {
+	if !bytes.Contains(b, []byte(`\u202`)) {
+		return b
+	}
+
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); i++ {
+		if b[i] != '\\' || i+1 >= len(b) {
+			out = append(out, b[i])
+			continue
+		}
+		if b[i+1] == 'u' && i+6 <= len(b) && (string(b[i+2:i+6]) == "2028" || string(b[i+2:i+6]) == "2029") {
+			out = append(out, 0xe2, 0x80, 0xa8+b[i+5]-'8')
+			i += 5
+			continue
+		}
+		out = append(out, b[i], b[i+1])
+		i++
+	}
+
+	return out
 }
 
 func Respond(c fiber.Ctx, rt *runtime.Runtime, err error) error {

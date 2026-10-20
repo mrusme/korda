@@ -24,6 +24,7 @@ var Routes route.Table = route.Table{
 	"APIAuthLogin":    {Hierarchy: []string{"root", "api", "auth", "login"}, NoBreadcrumb: true},
 	"APISearch":       {Hierarchy: []string{"root", "api", "search"}, NoBreadcrumb: true},
 	"APIServer":       {Hierarchy: []string{"root", "api", "server"}, NoBreadcrumb: true},
+	"APISync":         {Hierarchy: []string{"root", "api", "sync"}, NoBreadcrumb: true},
 	"APISessions":     {Hierarchy: []string{"root", "api", "sessions"}, NoBreadcrumb: true},
 	"APISession":      {Hierarchy: []string{"root", "api", "sessions", ":id"}, NoBreadcrumb: true},
 	"APITrash":        {Hierarchy: []string{"root", "api", "trash"}, NoBreadcrumb: true},

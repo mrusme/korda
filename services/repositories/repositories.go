@@ -9,6 +9,8 @@ import (
 	"tty.fail/mrus/korda/services/repositories/assetfile"
 	"tty.fail/mrus/korda/services/repositories/assetmetadata"
 	"tty.fail/mrus/korda/services/repositories/session"
+	reposync "tty.fail/mrus/korda/services/repositories/sync"
+	"tty.fail/mrus/korda/services/repositories/synccheckpoint"
 	"tty.fail/mrus/korda/services/repositories/systemmetadata"
 	"tty.fail/mrus/korda/services/repositories/user"
 	"tty.fail/mrus/korda/services/repositories/usermetadata"
@@ -28,6 +30,8 @@ type Repositories struct {
 	AssetExif      *assetexif.Repository
 	AssetFile      *assetfile.Repository
 	AssetMetadata  *assetmetadata.Repository
+	SyncCheckpoint *synccheckpoint.Repository
+	Sync           *reposync.Repository
 }
 
 type startable interface {
@@ -69,6 +73,12 @@ func New(db *database.Database) (repos *Repositories, err error) {
 	if repos.AssetMetadata, err = assetmetadata.New(db); err != nil {
 		return nil, err
 	}
+	if repos.SyncCheckpoint, err = synccheckpoint.New(db); err != nil {
+		return nil, err
+	}
+	if repos.Sync, err = reposync.New(db); err != nil {
+		return nil, err
+	}
 
 	return repos, nil
 }
@@ -85,6 +95,8 @@ func (repos *Repositories) all() []startable {
 		repos.AssetExif,
 		repos.AssetFile,
 		repos.AssetMetadata,
+		repos.SyncCheckpoint,
+		repos.Sync,
 	}
 }
 

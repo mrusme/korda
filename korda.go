@@ -19,6 +19,7 @@ import (
 	logicassets "tty.fail/mrus/korda/logic/root/assets"
 	logicserver "tty.fail/mrus/korda/logic/root/server"
 	logicsessions "tty.fail/mrus/korda/logic/root/sessions"
+	logicsync "tty.fail/mrus/korda/logic/root/sync"
 	logicusers "tty.fail/mrus/korda/logic/root/users"
 	"tty.fail/mrus/korda/migrations"
 	"tty.fail/mrus/korda/services/jobs"
@@ -52,6 +53,7 @@ const (
 	assetDeleteCheckID  = "asset-delete-check"
 	userSyncUsageID     = "user-sync-usage"
 	missingThumbsID     = "missing-thumbnails"
+	auditCleanupID      = "audit-table-cleanup"
 	adminStorageLabel   = "admin"
 )
 
@@ -273,8 +275,14 @@ func registerCronFunctions(rt *runtime.Runtime) (err error) {
 		return err
 	}
 
-	return crn.Register(missingThumbsID, nightlySpec, func(ctx context.Context) error {
+	if err = crn.Register(missingThumbsID, nightlySpec, func(ctx context.Context) error {
 		return logicassets.QueueMissingThumbnails(ctx, rt)
+	}); err != nil {
+		return err
+	}
+
+	return crn.Register(auditCleanupID, nightlySpec, func(ctx context.Context) error {
+		return logicsync.CleanupAudit(ctx, rt)
 	})
 }
 
