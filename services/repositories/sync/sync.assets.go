@@ -146,8 +146,46 @@ func (repo *Repository) AssetMetadataDeletes(ctx context.Context, ownerID uuid.U
 	)
 }
 
+type AssetEdit struct {
+	ID         uuid.UUID
+	AssetID    uuid.UUID
+	Sequence   int64
+	Action     string
+	Parameters string
+	UpdateID   string
+}
+
+type AssetEditDelete struct {
+	ID     string
+	EditID uuid.UUID
+}
+
+func (repo *Repository) AssetEdits(ctx context.Context, ownerID uuid.UUID, b Bounds) ([]AssetEdit, error) {
+	args := []any{}
+	where := b.where("x.update_id", &args)
+	args = append(args, ownerID)
+
+	return database.Rows[AssetEdit](ctx, repo.db, `SELECT x.id, x.asset_id, x.sequence, x.action, x.parameters, x.update_id
+		FROM asset_edits x JOIN assets a ON a.id = x.asset_id
+		WHERE `+where+` AND a.owner_id = $`+strconv.Itoa(len(args))+b.tail("x.update_id"),
+		args...,
+	)
+}
+
+func (repo *Repository) AssetEditDeletes(ctx context.Context, ownerID uuid.UUID, b Bounds) ([]AssetEditDelete, error) {
+	args := []any{}
+	where := b.where("d.id", &args)
+	args = append(args, ownerID)
+
+	return database.Rows[AssetEditDelete](ctx, repo.db, `SELECT d.id, d.edit_id
+		FROM asset_edit_audit d JOIN assets a ON a.id = d.asset_id
+		WHERE `+where+` AND a.owner_id = $`+strconv.Itoa(len(args))+b.tail("d.id"),
+		args...,
+	)
+}
+
 var auditTables = []string{"album_audit", "album_user_audit", "album_asset_audit", "asset_audit",
-	"asset_metadata_audit", "memory_audit", "memory_asset_audit", "partner_audit", "stack_audit", "user_audit",
+	"asset_edit_audit", "asset_metadata_audit", "memory_audit", "memory_asset_audit", "partner_audit", "stack_audit", "user_audit",
 	"user_metadata_audit"}
 
 func (repo *Repository) CleanupAudit(ctx context.Context, before time.Time) (int64, error) {

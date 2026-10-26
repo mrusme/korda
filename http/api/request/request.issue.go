@@ -141,13 +141,27 @@ func tooSmall(origin string, minimum int64) (Issue, string) {
 	return iss, "Too small: expected number to be >=" + limit
 }
 
+func tooBigNumber(maximum float64) (Issue, string) {
+	return newIssue("origin", "number", "code", "too_big", "maximum", maximum, "inclusive", true),
+		"Too big: expected number to be <=" + strconv.FormatFloat(maximum, 'g', -1, 64)
+}
+
+func tooSmallNumber(minimum float64) (Issue, string) {
+	return newIssue("origin", "number", "code", "too_small", "minimum", minimum, "inclusive", true),
+		"Too small: expected number to be >=" + strconv.FormatFloat(minimum, 'g', -1, 64)
+}
+
 func invalidFormat(format string, pattern string, message string) (Issue, string) {
 	return newIssue("origin", "string", "code", "invalid_format", "format", format, "pattern", pattern), message
 }
 
 func invalidValue(values []string) (Issue, string) {
-	return newIssue("code", "invalid_value", "values", values).aborting(),
-		"Invalid option: expected one of " + quoted(values)
+	message := "Invalid option: expected one of " + quoted(values)
+	if len(values) == 1 {
+		message = "Invalid input: expected " + quoted(values)
+	}
+
+	return newIssue("code", "invalid_value", "values", values).aborting(), message
 }
 
 func invalidStringBool() (Issue, string) {

@@ -15,6 +15,7 @@ import (
 	"tty.fail/mrus/korda/helpers/optional"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/permission"
 	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/services/mediaroot"
@@ -202,6 +203,8 @@ func Update(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID
 
 	if len(writes) > 0 {
 		sidecarWrite(rt, id)
+	} else {
+		gh.Emit(ctx, rt, event.AssetUpdated{UserID: a.User.ID, AssetID: id, Detail: event.DetailExif})
 	}
 
 	return Get(ctx, rt, a, id)
@@ -297,6 +300,10 @@ func UpdateAll(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *BulkU
 
 	if writeSidecar {
 		sidecarWrite(rt, ids...)
+	} else {
+		for _, id := range ids {
+			gh.Emit(ctx, rt, event.AssetUpdated{UserID: a.User.ID, AssetID: id, Detail: event.DetailBare})
+		}
 	}
 
 	return nil

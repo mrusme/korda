@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"reflect"
 	"strings"
 
@@ -93,6 +94,28 @@ func (req *Request) Credentials() logicauth.Credentials {
 		UserAgent:   c.Get(fiber.HeaderUserAgent),
 		DeviceModel: c.Get("devicemodel"),
 		DeviceType:  c.Get("devicetype"),
+	}
+}
+
+func HTTPCredentials(r *http.Request) logicauth.Credentials {
+	cookie := ""
+	if c, err := r.Cookie(CookieAccessToken); err == nil {
+		cookie = c.Value
+	}
+
+	return logicauth.Credentials{
+		ShareKey:  r.Header.Get("x-immich-share-key"),
+		ShareSlug: r.Header.Get("x-immich-share-slug"),
+		SessionToken: first(
+			r.Header.Get("x-immich-user-token"),
+			r.Header.Get("x-immich-session-token"),
+			bearer(r.Header.Get(fiber.HeaderAuthorization)),
+			cookie,
+		),
+		APIKey:      r.Header.Get("x-api-key"),
+		UserAgent:   r.Header.Get(fiber.HeaderUserAgent),
+		DeviceModel: r.Header.Get("devicemodel"),
+		DeviceType:  r.Header.Get("devicetype"),
 	}
 }
 
@@ -201,6 +224,18 @@ func (req *Request) Body(dst any) error {
 	return bind(raw, present, dst, modeBody)
 }
 
+func (req *Request) BodyOrEmpty(dst any) error {
+	raw, present, err := req.body()
+	if err != nil {
+		return err
+	}
+	if !present {
+		raw, present = NewObject(), true
+	}
+
+	return bind(raw, present, dst, modeBody)
+}
+
 func (req *Request) body() (any, bool, error) {
 	mediaType, _, _ := mime.ParseMediaType(req.c.Get(fiber.HeaderContentType))
 
@@ -208,19 +243,28 @@ func (req *Request) body() (any, bool, error) {
 	case fiber.MIMEApplicationJSON:
 		b, err := req.Read(JSONLimit)
 		if err != nil || len(b) == 0 {
-			return nil, false, err
+			return req.empty(err)
 		}
 		return decodeJSON(b)
 
 	case fiber.MIMEApplicationForm:
 		b, err := req.Read(JSONLimit)
 		if err != nil || len(b) == 0 {
-			return nil, false, err
+			return req.empty(err)
 		}
 		return decodeForm(b), true, nil
 	}
 
 	return nil, false, nil
+}
+
+func (req *Request) empty(err error) (any, bool, error) {
+	header := &req.c.Request().Header
+	if err != nil || (len(header.Peek(fiber.HeaderContentLength)) == 0 && header.ContentLength() != -1) {
+		return nil, false, err
+	}
+
+	return NewObject(), true, nil
 }
 
 func (req *Request) Read(limit int64) ([]byte, error) {

@@ -39,6 +39,8 @@ func New(rt *runtime.Runtime, router fiber.Router) (*Route, error) {
 		base.Delete("/:id/metadata/:key", r.DeleteAssetMetadata).Name("deleteAssetMetadata")
 		base.Get("/:id/ocr", r.GetAssetOcr).Name("getAssetOcr")
 		base.Get("/:id/edits", r.GetAssetEdits).Name("getAssetEdits")
+		base.Put("/:id/edits", r.EditAsset).Name("editAsset")
+		base.Delete("/:id/edits", r.RemoveAssetEdits).Name("removeAssetEdits")
 		base.Get("/:id/thumbnail", r.ViewAsset).Name("viewAsset")
 		base.Get("/:id/original", r.DownloadAsset).Name("downloadAsset")
 		base.Get("/:id/video/playback", r.PlayAssetVideo).Name("playAssetVideo")

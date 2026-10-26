@@ -34,6 +34,7 @@ var handlers = map[modelsync.RequestType]handler{
 	modelsync.ReqMemoryToAssetsV2:    memoryAssets(modelsync.MemoryToAssetV2, false),
 	modelsync.ReqUserMetadataV1:      userMetadata,
 	modelsync.ReqAssetMetadataV1:     assetMetadata,
+	modelsync.ReqAssetEditsV1:        assetEdits,
 }
 
 func authUsers(t modelsync.EntityType) handler {
@@ -407,4 +408,16 @@ func assetMetadata(ctx context.Context, _ *runtime.Runtime, repo *reposync.Repos
 	return page(modelsync.AssetMetadataV1, p, func(b reposync.Bounds) ([]reposync.AssetMetadata, error) {
 		return repo.AssetMetadata(ctx, p.userID, b)
 	}, func(r reposync.AssetMetadata) string { return r.UpdateID }, identity, emit)
+}
+
+func assetEdits(ctx context.Context, _ *runtime.Runtime, repo *reposync.Repository, p *Plan, emit func(Line) error) error {
+	if err := page(modelsync.AssetEditDeleteV1, p, func(b reposync.Bounds) ([]reposync.AssetEditDelete, error) {
+		return repo.AssetEditDeletes(ctx, p.userID, b)
+	}, func(r reposync.AssetEditDelete) string { return r.ID }, identity, emit); err != nil {
+		return err
+	}
+
+	return page(modelsync.AssetEditV1, p, func(b reposync.Bounds) ([]reposync.AssetEdit, error) {
+		return repo.AssetEdits(ctx, p.userID, b)
+	}, func(r reposync.AssetEdit) string { return r.UpdateID }, identity, emit)
 }

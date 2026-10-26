@@ -23,11 +23,13 @@ import (
 	logicsync "tty.fail/mrus/korda/logic/root/sync"
 	logicusers "tty.fail/mrus/korda/logic/root/users"
 	"tty.fail/mrus/korda/migrations"
+	"tty.fail/mrus/korda/services/events"
 	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/services/media"
 	"tty.fail/mrus/korda/services/mediaroot"
 	"tty.fail/mrus/korda/services/metadata"
 	"tty.fail/mrus/korda/services/repositories"
+	"tty.fail/mrus/korda/services/websocket"
 	"tty.fail/mrus/korda/worker/targets"
 	"xn--gckvb8fzb.com/glides/cron"
 	glideshttp "xn--gckvb8fzb.com/glides/http"
@@ -136,7 +138,12 @@ func main() {
 	err = targets.Check(rt.Config())
 	rt.NilOrDie(err)
 
-	err = prepare(rt, glidesdispatch.From(rt))
+	redisCfg, err := rt.Config().Redis()
+	rt.NilOrDie(err)
+	dispatcher := jobs.NewDispatcher(glidesdispatch.From(rt), redisCfg)
+	defer dispatcher.Close()
+
+	err = prepare(rt, dispatcher)
 	rt.NilOrDie(err)
 
 	err = rt.Startup()
@@ -157,6 +164,7 @@ func main() {
 	wrk, err := worker.New(rt, targets.Register(rt))
 	rt.NilOrDie(err)
 	wrk.SetConcurrency(mediacfg.Concurrency + 1)
+	wrk.SetQueues(jobs.Queues())
 
 	webiface, err := web.New(rt, webcfg, apicfg)
 	rt.NilOrDie(err)
@@ -241,8 +249,22 @@ func prepare(rt *runtime.Runtime, queue jobs.Enqueuer) (err error) {
 	}
 	rt.AddService("jobs", jbs)
 
-	rt.OnStartup(repos.Startup, root.Startup, med.Startup, jbs.Startup)
-	rt.OnShutdown(repos.Shutdown, root.Shutdown, med.Shutdown, jbs.Shutdown)
+	rt.Debug("new", "events")
+	bus, err := events.New()
+	if err != nil {
+		return err
+	}
+	rt.AddService("events", bus)
+
+	rt.Debug("new", "websocket")
+	hub, err := websocket.New()
+	if err != nil {
+		return err
+	}
+	rt.AddService("websocket", hub)
+
+	rt.OnStartup(repos.Startup, root.Startup, med.Startup, jbs.Startup, hub.Startup)
+	rt.OnShutdown(repos.Shutdown, root.Shutdown, med.Shutdown, jbs.Shutdown, hub.Shutdown)
 
 	return nil
 }

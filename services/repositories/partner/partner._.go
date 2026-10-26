@@ -110,3 +110,8 @@ func (repo *Repository) InTimeline(ctx context.Context, userID uuid.UUID) ([]uui
 		WHERE p.shared_with_id = $1 AND p.in_timeline = 1
 		ORDER BY p.update_id`, userID)
 }
+
+func (repo *Repository) SharingWithMe(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	return database.Values[uuid.UUID](ctx, repo.db, `SELECT p.shared_by_id `+active+`
+		WHERE p.shared_with_id = $1 ORDER BY p.update_id`, userID)
+}

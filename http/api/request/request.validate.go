@@ -16,6 +16,7 @@ import (
 	"tty.fail/mrus/korda/helpers/optional"
 	"tty.fail/mrus/korda/helpers/refine"
 	"tty.fail/mrus/korda/helpers/sanitize"
+	"tty.fail/mrus/korda/models/geo"
 )
 
 const maxSafeInteger int64 = 1<<53 - 1
@@ -40,6 +41,8 @@ func newPattern(expr string, flags string) pattern {
 var (
 	emailPattern    = newPattern(`^[\p{L}\p{M}\p{N}.!#$%&'*+/=?^_`+"`"+`{|}~-]+@[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?)*$`, "u")
 	uuidPattern     = newPattern(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`, "")
+	uuidV7Pattern   = newPattern(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`, "")
+	anyUUIDPattern  = newPattern(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$`, "")
 	datePattern     = newPattern(`^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$`, "")
 	datetimePattern = newPattern(`^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$`, "")
 	namedPatterns   = map[string]pattern{
@@ -49,6 +52,11 @@ var (
 			re:      regexp.MustCompile(`^(init\.mp4|seg_\d+\.m4s)$`),
 			source:  `/^(init\.mp4|seg_\d+\.m4s)$/`,
 			message: "Invalid HLS segment filename",
+		},
+		"filename": {
+			re:      regexp.MustCompile(`^[a-zA-Z0-9_\-.]+$`),
+			source:  `/^[a-zA-Z0-9_\-.]+$/`,
+			message: "Filename contains invalid characters",
 		},
 		"hexColor": newPattern(`^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$`, ""),
 		"tagName": {
@@ -65,6 +73,29 @@ var (
 				return ""
 			}
 			return `Must be a UUID v4 or "me"`
+		},
+		"angle":          angle,
+		"birthDate":      birthDate,
+		"uniqueIds":      uniqueIDs,
+		"cron":           cronExpression,
+		"issuerUrl":      emptyOrURL("Issuer URL must be an empty string or a valid URL"),
+		"accountUrl":     emptyOrURL("Account management URL must be an empty string or a valid URL"),
+		"endSessionUrl":  emptyOrURL("endSessionEndpoint must be an empty string or a valid URL"),
+		"externalDomain": emptyOrURL("External domain must be an empty string or a valid URL"),
+		"nonEmptyItems": func(raw any) string {
+			list, _ := raw.([]any)
+			for _, item := range list {
+				if s, ok := item.(string); ok && jsTrim(s) == "" {
+					return "Array items must not be empty"
+				}
+			}
+			return ""
+		},
+		"uniqueItems": func(raw any) string {
+			if uniqueIDs(raw) != "" {
+				return "Array must have unique items"
+			}
+			return ""
 		},
 		"rating": func(raw any) string {
 			if n, ok := raw.(json.Number); ok {
@@ -88,7 +119,13 @@ var (
 	strictType      = reflect.TypeFor[refine.Strict]()
 	refinerType     = reflect.TypeFor[refine.Refiner]()
 	piperType       = reflect.TypeFor[refine.Piper]()
+	bboxType        = reflect.TypeFor[geo.BBox]()
+	numberEnumType  = reflect.TypeFor[numberEnum]()
 )
+
+type numberEnum interface {
+	NumberEnum() []int64
+}
 
 type enum interface {
 	Enum() []string
@@ -97,6 +134,9 @@ type enum interface {
 type rules struct {
 	email    bool
 	uuid     bool
+	anyUUID  bool
+	uuidV7   bool
+	positive bool
 	date     bool
 	datetime bool
 	nullable bool
@@ -106,10 +146,17 @@ type rules struct {
 	trim     bool
 	json     bool
 	boolean  bool
+	config   bool
+	split    bool
+	time     bool
+	url      bool
+	required bool
+	minF     *float64
+	maxF     *float64
 	min      *int64
 	max      *int64
 	regex    *pattern
-	refine   string
+	refine   []string
 }
 
 func parseRules(tag string) (r rules, err error) {
@@ -124,6 +171,12 @@ func parseRules(tag string) (r rules, err error) {
 			r.email = true
 		case "uuid":
 			r.uuid = true
+		case "anyuuid":
+			r.anyUUID = true
+		case "uuidv7":
+			r.uuidV7 = true
+		case "positive":
+			r.positive = true
 		case "date":
 			r.date = true
 		case "datetime":
@@ -138,11 +191,27 @@ func parseRules(tag string) (r rules, err error) {
 			r.coerce = true
 		case "trim":
 			r.trim = true
+		case "configbool":
+			r.config = true
+		case "split":
+			r.split = true
 		case "json":
 			r.json = true
 		case "boolean":
 			r.boolean = true
 		case "min", "max":
+			if strings.Contains(arg, ".") {
+				limit, err := strconv.ParseFloat(arg, 64)
+				if err != nil {
+					return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
+				}
+				if name == "min" {
+					r.minF = &limit
+				} else {
+					r.maxF = &limit
+				}
+				continue
+			}
 			limit, err := strconv.ParseInt(arg, 10, 64)
 			if err != nil {
 				return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
@@ -152,6 +221,12 @@ func parseRules(tag string) (r rules, err error) {
 			} else {
 				r.max = &limit
 			}
+		case "time":
+			r.time = true
+		case "url":
+			r.url = true
+		case "required":
+			r.required = true
 		case "regex":
 			p, ok := namedPatterns[arg]
 			if !ok {
@@ -159,10 +234,12 @@ func parseRules(tag string) (r rules, err error) {
 			}
 			r.regex = &p
 		case "refine":
-			if _, ok := fieldRefinements[arg]; !ok {
-				return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
+			for name := range strings.SplitSeq(arg, "|") {
+				if _, ok := fieldRefinements[name]; !ok {
+					return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
+				}
+				r.refine = append(r.refine, name)
 			}
-			r.refine = arg
 		default:
 			return r, fmt.Errorf("%w: %s", ErrUnknownRule, rule)
 		}
@@ -252,6 +329,9 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 	switch {
 	case isOptional(t):
 		inner, _ := t.FieldByName("V")
+		if !present && r.required {
+			return w.value(path, raw, present, inner.Type, r, items)
+		}
 		if !present {
 			return nil, false
 		}
@@ -291,14 +371,35 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 	case t == recordType:
 		return w.record(path, raw, present)
 
+	case t.Implements(numberEnumType):
+		return w.numberEnum(path, raw, present, reflect.Zero(t).Interface().(numberEnum).NumberEnum())
+
 	case t.Implements(enumType):
 		return w.enum(path, raw, present, reflect.Zero(t).Interface().(enum).Enum())
+
+	case t == editsType:
+		return w.edits(path, raw, present, r)
 
 	case t.Kind() == reflect.Slice:
 		if !present && r.optional {
 			return nil, false
 		}
-		return w.slice(path, raw, present, t, r, items)
+		start := len(w.issues)
+		v, keep := w.slice(path, raw, present, t, r, items)
+		if keep && !w.abortedSince(start) {
+			for _, name := range r.refine {
+				if message := fieldRefinements[name](raw); message != "" {
+					w.issues = append(w.issues, Custom(path, message))
+				}
+			}
+		}
+		return v, keep
+
+	case t == bboxType:
+		return w.bbox(path, raw, present)
+
+	case t == editType:
+		return w.edit(path, raw, present)
 
 	case t.Kind() == reflect.Struct:
 		return w.object(path, raw, present, t)
@@ -306,15 +407,24 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 	case t.Kind() == reflect.String:
 		start := len(w.issues)
 		v, keep := w.string(path, raw, present, r)
-		if r.refine != "" && !w.abortedSince(start) && len(w.issues) == start {
-			if message := fieldRefinements[r.refine](raw); message != "" {
-				w.issues = append(w.issues, Custom(path, message))
-				return nil, false
+		if !w.abortedSince(start) && len(w.issues) == start {
+			for _, name := range r.refine {
+				if message := fieldRefinements[name](raw); message != "" {
+					if name == "cron" {
+						w.issues = append(w.issues, newIssue("code", "custom", "message", message, "path", append([]any{}, path...)))
+						return nil, false
+					}
+					w.issues = append(w.issues, Custom(path, message))
+					return nil, false
+				}
 			}
 		}
 		return v, keep
 
 	case t.Kind() == reflect.Bool:
+		if s, ok := raw.(string); ok && present && r.config && (s == "true" || s == "false") {
+			return s == "true", true
+		}
 		if w.mode == modeQuery && !r.boolean {
 			return w.stringBool(path, raw, present)
 		}
@@ -328,10 +438,12 @@ func (w *walker) value(path []any, raw any, present bool, t reflect.Type, r rule
 	case t.Kind() >= reflect.Int && t.Kind() <= reflect.Int64:
 		start := len(w.issues)
 		v, keep := w.integer(path, raw, present, r)
-		if r.refine != "" && !w.abortedSince(start) {
-			if message := fieldRefinements[r.refine](raw); message != "" {
-				w.issues = append(w.issues, Custom(path, message))
-				return nil, false
+		if !w.abortedSince(start) {
+			for _, name := range r.refine {
+				if message := fieldRefinements[name](raw); message != "" {
+					w.issues = append(w.issues, Custom(path, message))
+					return nil, false
+				}
 			}
 		}
 		return v, keep
@@ -423,6 +535,14 @@ func (w *walker) fields(path []any, m *Object, t reflect.Type, out *Object, know
 }
 
 func (w *walker) slice(path []any, raw any, present bool, t reflect.Type, r rules, items rules) (any, bool) {
+	if s, ok := raw.(string); ok && present && r.split {
+		parts := strings.Split(s, ",")
+		raw = make([]any, len(parts))
+		for i, part := range parts {
+			raw.([]any)[i] = part
+		}
+	}
+
 	list, ok := raw.([]any)
 	if !ok || !present {
 		iss, message := invalidType("array", received(raw, present))
@@ -552,6 +672,8 @@ func (w *walker) string(path []any, raw any, present bool, r rules) (any, bool) 
 	if !ok || !present {
 		iss, message := invalidType("string", received(raw, present))
 		switch {
+		case r.time:
+			message = "Invalid input: expected string in HH:MM format, received " + typeOf(raw, present)
 		case r.email:
 			message = "Invalid input: expected email, received " + typeOf(raw, present)
 		case r.date:
@@ -573,6 +695,25 @@ func (w *walker) string(path []any, raw any, present bool, r rules) (any, bool) 
 	}
 	if r.uuid && !uuidPattern.re.MatchString(s) {
 		iss, message := invalidFormat("uuid", uuidPattern.source, "Invalid UUID")
+		w.report(path, iss, message)
+		valid = false
+	}
+	if r.time && !timePattern.re.MatchString(s) {
+		iss, message := invalidFormat("time", timePattern.source, "Invalid input: expected string in HH:MM format, received string")
+		w.report(path, iss, message)
+		valid = false
+	}
+	if r.url && !validURL(s) {
+		w.report(path, newIssue("code", "invalid_format", "format", "url"), "Invalid URL")
+		valid = false
+	}
+	if r.uuidV7 && !uuidV7Pattern.re.MatchString(s) {
+		iss, message := invalidFormat("uuid", uuidV7Pattern.source, "Invalid UUID")
+		w.report(path, iss, message)
+		valid = false
+	}
+	if r.anyUUID && !anyUUIDPattern.re.MatchString(s) {
+		iss, message := invalidFormat("uuid", anyUUIDPattern.source, "Invalid UUID")
 		w.report(path, iss, message)
 		valid = false
 	}
@@ -616,6 +757,63 @@ func (w *walker) string(path []any, raw any, present bool, r rules) (any, bool) 
 	return s, true
 }
 
+func (w *walker) bbox(path []any, raw any, present bool) (any, bool) {
+	s, ok := raw.(string)
+	if !ok || !present {
+		iss, message := invalidType("string", received(raw, present))
+		w.report(path, iss, message)
+		return nil, false
+	}
+
+	custom := func(message string) (any, bool) {
+		w.issues = append(w.issues, newIssue("code", "custom", "message", message, "path", append([]any{}, path...)))
+		return nil, false
+	}
+
+	parts := strings.Split(s, ",")
+	if len(parts) != 4 {
+		return custom("bbox must have 4 comma-separated numbers: west,south,east,north")
+	}
+	values := make([]float64, len(parts))
+	for i, part := range parts {
+		if values[i] = jsStringToNumber(part); math.IsNaN(values[i]) {
+			return custom("bbox parts must be valid numbers")
+		}
+	}
+
+	names := []string{"west", "south", "east", "north"}
+	limits := []int64{180, 90, 180, 90}
+	start := len(w.issues)
+	for i, v := range values {
+		at := append(append([]any{}, path...), names[i])
+		switch {
+		case math.IsInf(v, 0):
+			iss, message := invalidInfinity()
+			w.report(at, iss, message)
+		case v < float64(-limits[i]):
+			iss, message := tooSmall("number", -limits[i])
+			w.report(at, iss, message)
+		case v > float64(limits[i]):
+			iss, message := tooBig("number", limits[i])
+			w.report(at, iss, message)
+		}
+	}
+	if !w.abortedSince(start) && values[3] < values[1] {
+		w.issues = append(w.issues, Custom(append(append([]any{}, path...), "north"),
+			"North latitude must be greater than or equal to south latitude"))
+	}
+	if len(w.issues) > start {
+		return nil, false
+	}
+
+	out := NewObject()
+	for i, name := range names {
+		out.Set(name, values[i])
+	}
+
+	return out, true
+}
+
 func (w *walker) finite(path []any, raw any, present bool, r rules) (float64, bool) {
 	var f float64
 	if r.coerce {
@@ -653,6 +851,21 @@ func (w *walker) finite(path []any, raw any, present bool, r rules) (float64, bo
 
 func (w *walker) bounds(path []any, f float64, r rules) bool {
 	valid := true
+	if r.positive && f <= 0 {
+		w.report(path, newIssue("origin", "number", "code", "too_small", "minimum", 0, "inclusive", false),
+			"Too small: expected number to be >0")
+		valid = false
+	}
+	if r.minF != nil && f < *r.minF {
+		iss, message := tooSmallNumber(*r.minF)
+		w.report(path, iss, message)
+		valid = false
+	}
+	if r.maxF != nil && f > *r.maxF {
+		iss, message := tooBigNumber(*r.maxF)
+		w.report(path, iss, message)
+		valid = false
+	}
 	if r.min != nil && f < float64(*r.min) {
 		iss, message := tooSmall("number", *r.min)
 		w.report(path, iss, message)
@@ -711,11 +924,15 @@ func (w *walker) integer(path []any, raw any, present bool, r rules) (any, bool)
 func validate(raw any, present bool, t reflect.Type, m mode) (any, []Issue, error) {
 	w := &walker{mode: m}
 
-	if t.Kind() != reflect.Struct {
+	var v any
+	switch t.Kind() {
+	case reflect.Struct:
+		v, _ = w.object([]any{}, ordered(raw), present, t)
+	case reflect.Slice:
+		v, _ = w.slice([]any{}, ordered(raw), present, t, rules{}, rules{})
+	default:
 		return nil, nil, fmt.Errorf("%w: %s", ErrUnsupportedType, t)
 	}
-
-	v, _ := w.object([]any{}, ordered(raw), present, t)
 	if w.err != nil {
 		return nil, nil, w.err
 	}

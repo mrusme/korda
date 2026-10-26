@@ -381,3 +381,7 @@ func ApplyKeywords(ctx context.Context, rt *runtime.Runtime, assetID uuid.UUID, 
 
 	return gh.Repositories(rt).Tag.ReplaceAssetTags(ctx, nil, assetID, ids)
 }
+
+func Cleanup(ctx context.Context, rt *runtime.Runtime) error {
+	return gh.Repositories(rt).Tag.DeleteEmpty(ctx)
+}

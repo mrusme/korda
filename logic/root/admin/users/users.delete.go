@@ -11,6 +11,7 @@ import (
 	"tty.fail/mrus/korda/helpers/optional"
 	logicusers "tty.fail/mrus/korda/logic/root/users"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/user"
 	"tty.fail/mrus/korda/services/mediaroot"
 	repouser "tty.fail/mrus/korda/services/repositories/user"
@@ -117,7 +118,12 @@ func Purge(ctx context.Context, rt *runtime.Runtime, id uuid.UUID, force bool) e
 		}
 	}
 
-	return gh.Repositories(rt).User.Delete(ctx, id, now())
+	if err = gh.Repositories(rt).User.Delete(ctx, id, now()); err != nil {
+		return err
+	}
+	gh.Emit(ctx, rt, event.UserDeleted{UserID: id})
+
+	return nil
 }
 
 func readyForDeletion(u *user.User, delayDays int, at time.Time) bool {

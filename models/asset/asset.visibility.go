@@ -17,3 +17,14 @@ func (Visibility) Enum() []string {
 		string(VisibilityLocked),
 	}
 }
+
+type OrderBy string
+
+const (
+	OrderByTakenAt   OrderBy = "takenAt"
+	OrderByCreatedAt OrderBy = "createdAt"
+)
+
+func (OrderBy) Enum() []string {
+	return []string{string(OrderByTakenAt), string(OrderByCreatedAt)}
+}

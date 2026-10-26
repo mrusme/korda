@@ -104,6 +104,68 @@ var (
 	ErrSharedLinkNoPassword      = errors.New("Shared link is not password protected")
 	ErrSharedLinkPassword        = errors.New("Invalid password")
 	ErrSharedLinkPasswordMissing = errors.New("Password required")
+	ErrNotificationNotFound      = errors.New("Notification not found")
+	ErrSMTPVerify                = errors.New("Failed to verify SMTP configuration")
+	ErrQueueNotPausable          = errors.New("The BackgroundTask queue cannot be paused")
+	ErrNotInMaintenance          = errors.New("Not in maintenance mode")
+	ErrInvalidBackupName         = errors.New("Invalid backup name!")
+	ErrOwnClusterGroup           = errors.New("Cannot request to join your own cluster group")
+	ErrLastClusterMember         = errors.New("Cannot leave a cluster group without any other members")
+	ErrPluginNotFound            = errors.New("Plugin not found")
+	ErrPluginTypeFilter          = errors.New("err_plugin_type_filter")
+	ErrOAuthDisabled             = errors.New("OAuth is not enabled")
+	ErrOAuthState                = errors.New("OAuth state is missing")
+	ErrOAuthVerifier             = errors.New("OAuth code verifier is missing")
+	ErrOAuthLogout               = errors.New("Received backchannel logout request but OAuth is not enabled")
+	ErrConfigFile                = errors.New("Cannot update configuration while IMMICH_CONFIG_FILE is in use")
+	ErrLibraryNotFound           = errors.New("Library not found")
+	ErrPersonNotFound            = errors.New("Person not found")
+	ErrPersonOtherUser           = errors.New("Only name and birthDate can be updated for other users")
+	ErrMergeTooFew               = errors.New("At least two people are required for merging")
+	ErrMergeSelf                 = errors.New("Cannot merge a person into themselves")
+	ErrShareWithSelf             = errors.New("Cannot share a person with yourself")
+	ErrClusterGroup              = errors.New("All users must be in the same cluster group")
+	ErrSidecarNotDeletable       = errors.New("Sidecar files cannot be deleted")
+	ErrAssetFileNotFound         = errors.New("Asset file not found")
+	ErrOnlyImagesEditable        = errors.New("Only images can be edited")
+	ErrEditLivePhoto             = errors.New("Editing live photos is not supported")
+	ErrEditPanorama              = errors.New("Editing panorama images is not supported")
+	ErrEditGIF                   = errors.New("Editing GIF images is not supported")
+	ErrEditSVG                   = errors.New("Editing SVG images is not supported")
+	ErrEditDimensions            = errors.New("Asset dimensions are not available for editing")
+	ErrCropFirst                 = errors.New("Crop action must be the first edit action")
+	ErrCropBounds                = errors.New("Crop parameters are out of bounds")
+	ErrDownloadTarget            = errors.New("assetIds, albumId, or userId is required")
+	ErrOtherLockedTimeline       = errors.New("You may not access another user's locked timeline")
+	ErrTimeBucketFormat          = errors.New("err_time_bucket_format")
+	ErrWithPartners              = errors.New("withPartners is only supported for non-archived, non-trashed, non-favorited, non-locked assets")
+	ErrJobRunning                = errors.New("Job is already running")
+	ErrInvalidJobName            = errors.New("Invalid job name")
+)
+
+type UnknownMethod struct {
+	Method string
+}
+
+func (e *UnknownMethod) Error() string {
+	return "Unknown method " + e.Method
+}
+
+type Unsupported string
+
+func (u Unsupported) Error() string {
+	return string(u)
+}
+
+const (
+	UnsupportedBackups     Unsupported = "Database backups are not supported by korda"
+	UnsupportedIntegrity   Unsupported = "Integrity reports are not supported by korda"
+	UnsupportedLibraries   Unsupported = "External libraries are not supported by korda"
+	UnsupportedPeople      Unsupported = "People and faces are not supported by korda"
+	UnsupportedWorkflows   Unsupported = "Workflows are not supported by korda"
+	UnsupportedPlugins     Unsupported = "Plugins are not supported by korda"
+	UnsupportedMaintenance Unsupported = "Maintenance mode is not supported by korda"
+	UnsupportedClusters    Unsupported = "Cluster group invitations are not supported by korda"
 )
 
 var (

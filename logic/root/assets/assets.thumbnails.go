@@ -11,12 +11,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"tty.fail/mrus/korda/errs"
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/helpers/mimetypes"
 	"tty.fail/mrus/korda/helpers/optional"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetfile"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/services/media"
 	"tty.fail/mrus/korda/services/mediaroot"
@@ -24,6 +26,7 @@ import (
 	"tty.fail/mrus/korda/services/metadata/probe"
 	"tty.fail/mrus/korda/services/metadata/video"
 	repoasset "tty.fail/mrus/korda/services/repositories/asset"
+	"xn--gckvb8fzb.com/glides/models/asyncjob"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
 
@@ -159,23 +162,32 @@ func GenerateThumbnails(ctx context.Context, rt *runtime.Runtime, p jobs.AssetPa
 		return err
 	}
 
+	skipped := false
 	if a.Visibility != asset.VisibilityHidden {
-		if err = thumbnails(ctx, rt, a); err != nil {
+		if skipped, err = thumbnails(ctx, rt, a); err != nil {
 			return err
 		}
 	}
 
-	if (p.Source == jobs.SourceUpload || p.Notify) && a.Type == asset.TypeVideo {
-		return gh.Jobs(rt).Transcode(jobs.AssetPayload{AssetID: a.ID, Source: p.Source})
+	if p.Source != jobs.SourceUpload && !p.Notify {
+		return nil
+	}
+	if a.Type == asset.TypeVideo {
+		if err = gh.Jobs(rt).Transcode(jobs.AssetPayload{AssetID: a.ID, Source: p.Source}); err != nil {
+			return err
+		}
+	}
+	if !skipped {
+		gh.Emit(ctx, rt, event.AssetUploaded{AssetID: a.ID})
 	}
 
 	return nil
 }
 
-func thumbnails(ctx context.Context, rt *runtime.Runtime, a *asset.Asset) error {
+func thumbnails(ctx context.Context, rt *runtime.Runtime, a *asset.Asset) (bool, error) {
 	abs, err := gh.MediaRoot(rt).Abs(a.OriginalPath)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var out *renditions
@@ -188,14 +200,14 @@ func thumbnails(ctx context.Context, rt *runtime.Runtime, a *asset.Asset) error 
 	case a.Type == asset.TypeImage:
 		out, err = imageRenditions(rt, a, abs)
 	default:
-		return nil
+		return false, nil
 	}
 	if errors.Is(err, errs.ErrImageUndecodable) || errors.Is(err, media.ErrNoFFmpeg) || errors.Is(err, video.ErrNoProbe) {
 		rt.Warn("assets", "thumbnails", "asset", a.ID.String(), "file", a.OriginalFileName, "skipped", err)
-		return nil
+		return true, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	repos := gh.Repositories(rt)
@@ -206,7 +218,7 @@ func thumbnails(ctx context.Context, rt *runtime.Runtime, a *asset.Asset) error 
 	} {
 		previous, err := repos.AssetFile.Upsert(ctx, NewFile(a.ID, kind, rendition.Path, at))
 		if err != nil {
-			return err
+			return false, err
 		}
 		if previous != "" && previous != rendition.Path {
 			if err = gh.MediaRoot(rt).Remove(previous); err != nil {
@@ -215,13 +227,29 @@ func thumbnails(ctx context.Context, rt *runtime.Runtime, a *asset.Asset) error 
 		}
 	}
 
-	if !bytes.Equal(a.Thumbhash, out.thumbhash) {
+	lock := renderLock(a.ID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	edits, err := repos.AssetEdit.All(ctx, a.ID)
+	if err != nil {
+		return false, err
+	}
+	if len(edits) > 0 && a.Type == asset.TypeImage {
+		exif, err := repos.AssetExif.Get(ctx, a.ID)
+		if err != nil && !errors.Is(err, errs.ErrNoRows) {
+			return false, err
+		}
+		if _, err = renderEdits(ctx, rt, a, edits, exif); err != nil {
+			return false, err
+		}
+	} else if !bytes.Equal(a.Thumbhash, out.thumbhash) {
 		if _, err = repos.Asset.Update(ctx, a.ID, repoasset.Update{Thumbhash: optional.Of(out.thumbhash)}, at); err != nil {
-			return err
+			return false, err
 		}
 	}
 
-	return repos.Asset.ThumbnailsGenerated(ctx, a.ID, now())
+	return false, repos.Asset.ThumbnailsGenerated(ctx, a.ID, now())
 }
 
 func targetResolution(value string, s *video.Stream) int {
@@ -308,6 +336,35 @@ func QueueMissingThumbnails(ctx context.Context, rt *runtime.Runtime) error {
 
 	for _, id := range ids {
 		if err = gh.Jobs(rt).Thumbnails(jobs.AssetPayload{AssetID: id}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func QueueAll(ctx context.Context, rt *runtime.Runtime, jobType asyncjob.JobType, force bool) error {
+	repos := gh.Repositories(rt)
+
+	var ids []uuid.UUID
+	var err error
+	queue := gh.Jobs(rt).Thumbnails
+	switch jobType {
+	case jobs.ThumbnailsAll:
+		ids, err = repos.Asset.ForThumbnails(ctx, force)
+	case jobs.MetadataAll:
+		ids, err = repos.Asset.ForMetadata(ctx, force)
+		queue = gh.Jobs(rt).Metadata
+	case jobs.TranscodeAll:
+		ids, err = repos.Asset.ForTranscode(ctx, force)
+		queue = gh.Jobs(rt).Transcode
+	}
+	if err != nil {
+		return err
+	}
+
+	for _, id := range ids {
+		if err = queue(jobs.AssetPayload{AssetID: id, Force: force}); err != nil {
 			return err
 		}
 	}

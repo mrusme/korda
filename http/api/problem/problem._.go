@@ -128,6 +128,41 @@ var mappings = []mapping{
 	{errs.ErrSharedLinkNoPassword, fiber.StatusBadRequest},
 	{errs.ErrSharedLinkPassword, fiber.StatusUnauthorized},
 	{errs.ErrSharedLinkPasswordMissing, fiber.StatusUnauthorized},
+	{errs.ErrNotificationNotFound, fiber.StatusBadRequest},
+	{errs.ErrSMTPVerify, fiber.StatusBadRequest},
+	{errs.ErrQueueNotPausable, fiber.StatusBadRequest},
+	{errs.ErrOtherLockedTimeline, fiber.StatusBadRequest},
+	{errs.ErrDownloadTarget, fiber.StatusBadRequest},
+	{errs.ErrOnlyImagesEditable, fiber.StatusBadRequest},
+	{errs.ErrSidecarNotDeletable, fiber.StatusBadRequest},
+	{errs.ErrPersonNotFound, fiber.StatusNotFound},
+	{errs.ErrLibraryNotFound, fiber.StatusBadRequest},
+	{errs.ErrConfigFile, fiber.StatusBadRequest},
+	{errs.ErrOAuthDisabled, fiber.StatusBadRequest},
+	{errs.ErrNotInMaintenance, fiber.StatusBadRequest},
+	{errs.ErrInvalidBackupName, fiber.StatusBadRequest},
+	{errs.ErrOwnClusterGroup, fiber.StatusBadRequest},
+	{errs.ErrLastClusterMember, fiber.StatusBadRequest},
+	{errs.ErrPluginNotFound, fiber.StatusBadRequest},
+	{errs.ErrOAuthState, fiber.StatusBadRequest},
+	{errs.ErrOAuthVerifier, fiber.StatusBadRequest},
+	{errs.ErrOAuthLogout, fiber.StatusBadRequest},
+	{errs.ErrPersonOtherUser, fiber.StatusBadRequest},
+	{errs.ErrMergeTooFew, fiber.StatusBadRequest},
+	{errs.ErrMergeSelf, fiber.StatusBadRequest},
+	{errs.ErrShareWithSelf, fiber.StatusBadRequest},
+	{errs.ErrClusterGroup, fiber.StatusBadRequest},
+	{errs.ErrAssetFileNotFound, fiber.StatusBadRequest},
+	{errs.ErrEditLivePhoto, fiber.StatusBadRequest},
+	{errs.ErrEditPanorama, fiber.StatusBadRequest},
+	{errs.ErrEditGIF, fiber.StatusBadRequest},
+	{errs.ErrEditSVG, fiber.StatusBadRequest},
+	{errs.ErrEditDimensions, fiber.StatusBadRequest},
+	{errs.ErrCropFirst, fiber.StatusBadRequest},
+	{errs.ErrCropBounds, fiber.StatusBadRequest},
+	{errs.ErrWithPartners, fiber.StatusBadRequest},
+	{errs.ErrJobRunning, fiber.StatusBadRequest},
+	{errs.ErrInvalidJobName, fiber.StatusBadRequest},
 	{errs.ErrNotFound, fiber.StatusNotFound},
 	{errs.ErrAssetMediaNotFound, fiber.StatusNotFound},
 	{errs.ErrStreamNotReady, fiber.StatusNotFound},
@@ -150,6 +185,14 @@ func Failure(operation string) string {
 func From(err error, operation string) (status int, body Body, known bool) {
 	if explicit, ok := errors.AsType[*Error](err); ok {
 		return explicit.Status, Body{Message: explicit.Message}, true
+	}
+
+	if unknown, ok := errors.AsType[*errs.UnknownMethod](err); ok {
+		return fiber.StatusBadRequest, Body{Message: unknown.Error()}, true
+	}
+
+	if unsupported, ok := errors.AsType[errs.Unsupported](err); ok {
+		return fiber.StatusBadRequest, Body{Message: unsupported.Error()}, true
 	}
 
 	if validation, ok := errors.AsType[*ValidationError](err); ok {

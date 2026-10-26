@@ -2,9 +2,12 @@ package assetfile
 
 import (
 	"context"
+	"slices"
+	"strconv"
 
 	"github.com/google/uuid"
 	"tty.fail/mrus/korda/models/assetfile"
+	"tty.fail/mrus/korda/services/repositories/query"
 	"xn--gckvb8fzb.com/glides/services/database"
 )
 
@@ -74,4 +77,60 @@ func (repo *Repository) Delete(ctx context.Context, assetID uuid.UUID, kind asse
 	)
 
 	return err
+}
+
+type Filter struct {
+	AssetID       uuid.UUID
+	Type          *assetfile.Type
+	IsEdited      *bool
+	IsProgressive *bool
+	IsTransparent *bool
+}
+
+func (repo *Repository) ByID(ctx context.Context, id uuid.UUID) (*assetfile.File, error) {
+	return database.Row[assetfile.File](ctx, repo.db, `SELECT `+columns+` FROM asset_files WHERE id = $1`, id)
+}
+
+func (repo *Repository) Search(ctx context.Context, f Filter) ([]assetfile.File, error) {
+	args := []any{f.AssetID}
+	where := `asset_id = $1`
+	add := func(column string, v any) {
+		args = append(args, v)
+		where += ` AND ` + column + ` = $` + strconv.Itoa(len(args))
+	}
+	if f.Type != nil {
+		add("type", *f.Type)
+	}
+	if f.IsEdited != nil {
+		add("is_edited", *f.IsEdited)
+	}
+	if f.IsProgressive != nil {
+		add("is_progressive", *f.IsProgressive)
+	}
+	if f.IsTransparent != nil {
+		add("is_transparent", *f.IsTransparent)
+	}
+
+	return database.Rows[assetfile.File](ctx, repo.db, `SELECT `+columns+` FROM asset_files WHERE `+where+` ORDER BY rowid`, args...)
+}
+
+func (repo *Repository) DeleteByID(ctx context.Context, id uuid.UUID) error {
+	_, err := database.Exec(ctx, repo.db, `DELETE FROM asset_files WHERE id = $1`, id)
+	return err
+}
+
+func (repo *Repository) OwnedBy(ctx context.Context, userID uuid.UUID, ids []uuid.UUID, elevated bool) ([]uuid.UUID, error) {
+	out := []uuid.UUID{}
+	for chunk := range slices.Chunk(ids, query.ChunkSize) {
+		args := []any{userID, elevated}
+		in := query.Placeholders(&args, chunk)
+		found, err := database.Values[uuid.UUID](ctx, repo.db, `SELECT f.id FROM asset_files f JOIN assets a ON a.id = f.asset_id
+			WHERE a.owner_id = $1 AND ($2 OR a.visibility != 'locked') AND f.id IN (`+in+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, found...)
+	}
+
+	return out, nil
 }

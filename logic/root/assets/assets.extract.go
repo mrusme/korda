@@ -23,6 +23,7 @@ import (
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetexif"
 	"tty.fail/mrus/korda/models/assetfile"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/services/mediaroot"
 	"tty.fail/mrus/korda/services/metadata"
@@ -281,6 +282,9 @@ func Extract(ctx context.Context, rt *runtime.Runtime, p jobs.AssetPayload) erro
 	if err = repos.Asset.MetadataExtracted(ctx, a.ID, now()); err != nil {
 		return err
 	}
+	if p.Source == jobs.SourceSidecarWrite {
+		gh.Emit(ctx, rt, event.AssetUpdated{UserID: a.OwnerID, AssetID: a.ID, Detail: event.DetailFull})
+	}
 
 	if p.Source == jobs.SourceUpload || p.Source == jobs.SourceCopy {
 		return gh.Jobs(rt).Thumbnails(jobs.AssetPayload{AssetID: a.ID, Source: p.Source})
@@ -378,8 +382,12 @@ func linkLivePhotos(ctx context.Context, rt *runtime.Runtime, a *asset.Asset, ci
 	if err = repos.Asset.SetVisibility(ctx, []uuid.UUID{motion.ID}, asset.VisibilityHidden, at); err != nil {
 		return err
 	}
+	if err = repos.Album.RemoveAssetsFromAll(ctx, []uuid.UUID{motion.ID}, at); err != nil {
+		return err
+	}
+	gh.Emit(ctx, rt, event.AssetHidden{UserID: motion.OwnerID, AssetID: motion.ID})
 
-	return repos.Album.RemoveAssetsFromAll(ctx, []uuid.UUID{motion.ID}, at)
+	return nil
 }
 
 func extractMotion(ctx context.Context, rt *runtime.Runtime, still *asset.Asset, tags *metadata.Tags, dates Dates, abs string, size int64, modified time.Time) error {

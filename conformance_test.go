@@ -38,6 +38,7 @@ type step struct {
 	headers []string
 	mode    compareMode
 	capture string
+	header  string
 }
 
 type side struct {
@@ -316,6 +317,12 @@ func TestConformance(t *testing.T) {
 		{name: "unlock without pin", method: "POST", path: "/api/auth/session/unlock", body: `{}`, auth: "session"},
 	}
 
+	compareSteps(t, immich, korda, steps)
+}
+
+func compareSteps(t *testing.T, immich *side, korda *side, steps []step) {
+	t.Helper()
+
 	for _, st := range steps {
 		t.Run(st.name, func(t *testing.T) {
 			want := immich.run(t, st)
@@ -325,6 +332,9 @@ func TestConformance(t *testing.T) {
 			if want.Status != got.Status {
 				t.Errorf("status = %d, Immich %d\nkorda  %s\nImmich %s", got.Status, want.Status, got.Body, want.Body)
 				return
+			}
+			if st.header != "" && got.Header.Get(st.header) != want.Header.Get(st.header) {
+				t.Errorf("%s = %q, Immich %q", st.header, got.Header.Get(st.header), want.Header.Get(st.header))
 			}
 
 			var a, b string

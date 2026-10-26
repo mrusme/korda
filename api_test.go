@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -23,11 +24,14 @@ import (
 	"tty.fail/mrus/korda/http/routes"
 	"tty.fail/mrus/korda/http/web"
 	logicserver "tty.fail/mrus/korda/logic/root/server"
+	"tty.fail/mrus/korda/models/queue"
+	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/worker/targets"
 	"xn--gckvb8fzb.com/glides/http/route"
 	"xn--gckvb8fzb.com/glides/models/asyncjob"
 	"xn--gckvb8fzb.com/glides/runtime"
 	"xn--gckvb8fzb.com/glides/services/database/sqlite"
+	"xn--gckvb8fzb.com/glides/services/dispatch"
 	"xn--gckvb8fzb.com/glides/worker/targets/handler"
 )
 
@@ -38,8 +42,9 @@ const (
 )
 
 type jobRecorder struct {
-	mu   sync.Mutex
-	jobs []recordedJob
+	mu     sync.Mutex
+	jobs   []recordedJob
+	paused map[string]bool
 }
 
 type recordedJob struct {
@@ -63,6 +68,99 @@ func (r *jobRecorder) JobUnique(j *asyncjob.AsyncJob, id string, opts ...asynq.O
 	r.jobs = append(r.jobs, recordedJob{id: id, job: *j, opts: opts})
 
 	return nil
+}
+
+func (r *jobRecorder) Remove(queue string, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.jobs = slices.DeleteFunc(r.jobs, func(j recordedJob) bool { return j.id == id })
+
+	return nil
+}
+
+func (j recordedJob) queue() string {
+	for _, o := range j.opts {
+		if o.Type() == asynq.QueueOpt {
+			return o.Value().(string)
+		}
+	}
+
+	return dispatch.QueueDefault
+}
+
+func (r *jobRecorder) Stats(queue string) (jobs.Stats, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	st := jobs.Stats{IsPaused: r.paused[queue]}
+	for _, j := range r.jobs {
+		switch {
+		case j.queue() != queue:
+		case st.IsPaused:
+			st.Paused++
+		default:
+			st.Waiting++
+		}
+	}
+
+	return st, nil
+}
+
+func (r *jobRecorder) Pause(queue string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.paused == nil {
+		r.paused = map[string]bool{}
+	}
+	r.paused[queue] = true
+
+	return nil
+}
+
+func (r *jobRecorder) Resume(queue string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.paused, queue)
+
+	return nil
+}
+
+func (r *jobRecorder) ClearFailed(queue string) error {
+	return nil
+}
+
+func (r *jobRecorder) Empty(queue string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.jobs = slices.DeleteFunc(r.jobs, func(j recordedJob) bool { return j.queue() == queue })
+
+	return nil
+}
+
+func (r *jobRecorder) Tasks(name string, statuses []queue.Status) ([]jobs.Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	listed := queue.StatusWaiting
+	if r.paused[name] {
+		listed = queue.StatusPaused
+	}
+	if !slices.Contains(statuses, listed) {
+		return []jobs.Task{}, nil
+	}
+
+	out := []jobs.Task{}
+	for _, j := range r.jobs {
+		if j.queue() == name {
+			out = append(out, jobs.Task{ID: j.id, Job: j.job})
+		}
+	}
+
+	return jobs.Newest(out), nil
 }
 
 func (r *jobRecorder) drain() []recordedJob {
@@ -336,11 +434,13 @@ var (
 	uuidPattern  = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 	timePattern  = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z`)
 	tokenPattern = regexp.MustCompile(`"(accessToken|secret|token)":"[A-Za-z0-9]+"`)
+	msPattern    = regexp.MustCompile(`"timestamp":\d{13}`)
 )
 
 func normalize(body string) string {
 	body = uuidPattern.ReplaceAllString(body, "<uuid>")
 	body = timePattern.ReplaceAllString(body, "<time>")
+	body = msPattern.ReplaceAllString(body, `"timestamp":<ms>`)
 	return tokenPattern.ReplaceAllString(body, `"$1":"<token>"`)
 }
 

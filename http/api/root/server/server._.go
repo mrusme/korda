@@ -30,6 +30,7 @@ func New(rt *runtime.Runtime, router fiber.Router) (*Route, error) {
 		base.Get("/statistics", r.GetServerStatistics).Name("getServerStatistics")
 		base.Get("/media-types", r.GetSupportedMediaTypes).Name("getSupportedMediaTypes")
 		base.Get("/license", r.GetServerLicense).Name("getServerLicense")
+		base.Get("/version-check", r.GetVersionCheck).Name("getVersionCheck")
 		base.Put("/license", r.SetServerLicense).Name("setServerLicense")
 		base.Delete("/license", r.DeleteServerLicense).Name("deleteServerLicense")
 	}, r.Path+".")

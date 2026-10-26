@@ -12,6 +12,7 @@ import (
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetfile"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/permission"
 	repoasset "tty.fail/mrus/korda/services/repositories/asset"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -40,6 +41,7 @@ func DeleteAll(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *BulkD
 	if force {
 		return gh.Jobs(rt).EmptyTrash()
 	}
+	gh.Emit(ctx, rt, event.AssetsTrashed{UserID: a.User.ID, AssetIDs: ids})
 
 	return nil
 }
@@ -89,6 +91,7 @@ func Purge(ctx context.Context, rt *runtime.Runtime, id uuid.UUID, deleteOnDisk 
 	if err != nil {
 		return err
 	}
+	gh.Emit(ctx, rt, event.AssetDeleted{UserID: removed.Asset.OwnerID, AssetID: id})
 
 	if motion := removed.Asset.LivePhotoVideoID; motion.Valid {
 		count, err := repos.Asset.LivePhotoCount(ctx, motion.UUID)

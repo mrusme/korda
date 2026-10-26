@@ -274,3 +274,15 @@ func (repo *Repository) ForAssets(ctx context.Context, assetIDs []uuid.UUID) (ma
 
 	return out, nil
 }
+
+func (repo *Repository) DeleteEmpty(ctx context.Context) error {
+	_, err := database.Exec(ctx, repo.db, `WITH RECURSIVE closure (ancestor, descendant) AS (
+			SELECT id, id FROM tags
+			UNION ALL
+			SELECT c.ancestor, t.id FROM closure c JOIN tags t ON t.parent_id = c.descendant
+		)
+		DELETE FROM tags WHERE id NOT IN (
+			SELECT c.ancestor FROM closure c JOIN tag_assets ta ON ta.tag_id = c.descendant)`)
+
+	return err
+}

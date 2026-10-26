@@ -12,6 +12,7 @@ import (
 	"tty.fail/mrus/korda/logic/helpers/access"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/permission"
 	"tty.fail/mrus/korda/models/stack"
 	repoasset "tty.fail/mrus/korda/services/repositories/asset"
@@ -125,6 +126,7 @@ func Create(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *CreateIn
 	if err != nil {
 		return nil, err
 	}
+	gh.Emit(ctx, rt, event.StackChanged{UserID: a.User.ID})
 
 	return load(ctx, rt, s, false)
 }
@@ -172,6 +174,7 @@ func Update(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	gh.Emit(ctx, rt, event.StackChanged{UserID: a.User.ID})
 
 	return load(ctx, rt, updated, true)
 }
@@ -181,7 +184,15 @@ func Delete(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID
 		return err
 	}
 
-	return gh.Repositories(rt).Stack.Delete(ctx, []uuid.UUID{id}, now())
+	return changed(ctx, rt, a, gh.Repositories(rt).Stack.Delete(ctx, []uuid.UUID{id}, now()))
+}
+
+func changed(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, err error) error {
+	if err == nil {
+		gh.Emit(ctx, rt, event.StackChanged{UserID: a.User.ID})
+	}
+
+	return err
 }
 
 func DeleteAll(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *BulkIDsInput) error {
@@ -193,7 +204,7 @@ func DeleteAll(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *BulkI
 		return ErrNoStacks
 	}
 
-	return gh.Repositories(rt).Stack.Delete(ctx, ids, now())
+	return changed(ctx, rt, a, gh.Repositories(rt).Stack.Delete(ctx, ids, now()))
 }
 
 func RemoveAsset(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *RemoveAssetInput) error {
@@ -216,5 +227,5 @@ func RemoveAsset(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *Rem
 
 	_, err = repos.Asset.Update(ctx, assetID, repoasset.Update{StackID: optional.Value[uuid.UUID]{Set: true, Null: true}}, now())
 
-	return err
+	return changed(ctx, rt, a, err)
 }

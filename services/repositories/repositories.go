@@ -7,10 +7,12 @@ import (
 	"tty.fail/mrus/korda/services/repositories/album"
 	"tty.fail/mrus/korda/services/repositories/apikey"
 	"tty.fail/mrus/korda/services/repositories/asset"
+	"tty.fail/mrus/korda/services/repositories/assetedit"
 	"tty.fail/mrus/korda/services/repositories/assetexif"
 	"tty.fail/mrus/korda/services/repositories/assetfile"
 	"tty.fail/mrus/korda/services/repositories/assetmetadata"
 	"tty.fail/mrus/korda/services/repositories/memory"
+	"tty.fail/mrus/korda/services/repositories/notification"
 	"tty.fail/mrus/korda/services/repositories/partner"
 	"tty.fail/mrus/korda/services/repositories/session"
 	"tty.fail/mrus/korda/services/repositories/sharedlink"
@@ -46,6 +48,8 @@ type Repositories struct {
 	SharedLink     *sharedlink.Repository
 	Activity       *activity.Repository
 	Memory         *memory.Repository
+	Notification   *notification.Repository
+	AssetEdit      *assetedit.Repository
 }
 
 type startable interface {
@@ -114,6 +118,12 @@ func New(db *database.Database) (repos *Repositories, err error) {
 	if repos.Memory, err = memory.New(db); err != nil {
 		return nil, err
 	}
+	if repos.Notification, err = notification.New(db); err != nil {
+		return nil, err
+	}
+	if repos.AssetEdit, err = assetedit.New(db); err != nil {
+		return nil, err
+	}
 
 	return repos, nil
 }
@@ -139,6 +149,8 @@ func (repos *Repositories) all() []startable {
 		repos.SharedLink,
 		repos.Activity,
 		repos.Memory,
+		repos.Notification,
+		repos.AssetEdit,
 	}
 }
 

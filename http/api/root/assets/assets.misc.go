@@ -112,11 +112,54 @@ func (r *Route) GetAssetEdits(c fiber.Ctx) error {
 		return err
 	}
 
-	if err = access.Require(req.Context(), r.Runtime, req.Auth, permission.AssetRead, id); err != nil {
+	edits, err := logicassets.GetEdits(req.Context(), r.Runtime, req.Auth, id)
+	if err != nil {
 		return err
 	}
 
-	return req.Respond(fiber.StatusOK, view.NewAssetEdits(id))
+	return req.Respond(fiber.StatusOK, view.NewAssetEdits(c.Params("id"), edits))
+}
+
+func (r *Route) EditAsset(c fiber.Ctx) error {
+	req := request.New(r.Runtime, c, "editAsset")
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetEditCreate}); err != nil {
+		return err
+	}
+
+	var in logicassets.EditInput
+	if err := req.Body(&in); err != nil {
+		return err
+	}
+
+	id, err := req.UUID("id")
+	if err != nil {
+		return err
+	}
+
+	edits, err := logicassets.Edit(req.Context(), r.Runtime, req.Auth, id, &in)
+	if err != nil {
+		return err
+	}
+
+	return req.Respond(fiber.StatusOK, view.NewAssetEdits(c.Params("id"), edits))
+}
+
+func (r *Route) RemoveAssetEdits(c fiber.Ctx) error {
+	req := request.New(r.Runtime, c, "removeAssetEdits")
+	if err := req.Require(logicauth.Requirement{Permission: permission.AssetEditDelete}); err != nil {
+		return err
+	}
+
+	id, err := req.UUID("id")
+	if err != nil {
+		return err
+	}
+
+	if err = logicassets.RemoveEdits(req.Context(), r.Runtime, req.Auth, id); err != nil {
+		return err
+	}
+
+	return req.NoContent()
 }
 
 func (r *Route) GetMainPlaylist(c fiber.Ctx) error {

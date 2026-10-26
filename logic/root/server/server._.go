@@ -7,6 +7,7 @@ import (
 
 	"tty.fail/mrus/korda/errs"
 	gh "tty.fail/mrus/korda/helpers"
+	"tty.fail/mrus/korda/logic/root/systemconfig"
 	"tty.fail/mrus/korda/models/systemmetadata"
 	"tty.fail/mrus/korda/models/versionhistory"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -106,7 +107,7 @@ func GetConfig(ctx context.Context, rt *runtime.Runtime) (*Config, error) {
 		OAuthAccountManagementURL: "",
 		IsInitialized:             initialized,
 		IsOnboarded:               onboarded,
-		ExternalDomain:            cfg.ExternalDomain,
+		ExternalDomain:            systemconfig.Origin(cfg.ExternalDomain),
 		PublicUsers:               cfg.PublicUsers,
 		MapDarkStyleURL:           mapDarkStyle,
 		MapLightStyleURL:          mapLightStyle,

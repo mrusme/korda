@@ -27,10 +27,14 @@ func Require(
 	}
 
 	if !sameSet(allowed, ids) {
-		return fmt.Errorf("%w %s access", errs.ErrNoAccess, p)
+		return Denied(p)
 	}
 
 	return nil
+}
+
+func Denied(p permission.Permission) error {
+	return fmt.Errorf("%w %s access", errs.ErrNoAccess, p)
 }
 
 type checker func(ids []uuid.UUID) ([]uuid.UUID, error)
@@ -129,6 +133,9 @@ func check(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, p permission.
 	case permission.MemoryRead, permission.MemoryUpdate, permission.MemoryDelete:
 		return repos.Memory.OwnedBy(ctx, userID, ids)
 
+	case permission.NotificationRead, permission.NotificationUpdate, permission.NotificationDelete:
+		return repos.Notification.OwnedBy(ctx, userID, ids)
+
 	case permission.PartnerUpdate:
 		return repos.Partner.SharingWith(ctx, userID, ids)
 
@@ -138,13 +145,30 @@ func check(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, p permission.
 	case permission.TagAsset, permission.TagRead, permission.TagUpdate, permission.TagDelete:
 		return repos.Tag.OwnedBy(ctx, userID, ids)
 
-	case permission.AssetUpload:
-		if slices.Contains(ids, userID) {
-			return []uuid.UUID{userID}, nil
-		}
+	case permission.DuplicateRead, permission.DuplicateDelete:
+		return repos.Asset.DuplicateAccess(ctx, userID, ids)
+
+	case permission.AssetFileRead, permission.AssetFileDelete, permission.AssetFileDownload:
+		return repos.AssetFile.OwnedBy(ctx, userID, ids, a.Elevated)
+
+	case permission.TimelineRead:
+		return union(ids, self(userID),
+			func(ids []uuid.UUID) ([]uuid.UUID, error) { return repos.Partner.SharingWith(ctx, userID, ids) })
+
+	case permission.AssetUpload, permission.ArchiveRead, permission.TimelineDownload:
+		return self(userID)(ids)
 	}
 
 	return nil, nil
+}
+
+func self(userID uuid.UUID) checker {
+	return func(ids []uuid.UUID) ([]uuid.UUID, error) {
+		if slices.Contains(ids, userID) {
+			return []uuid.UUID{userID}, nil
+		}
+		return nil, nil
+	}
 }
 
 func checkSharedLink(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, p permission.Permission, ids []uuid.UUID) ([]uuid.UUID, error) {

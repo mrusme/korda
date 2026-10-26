@@ -65,5 +65,37 @@ func (repo *Repository) MissingThumbnails(ctx context.Context) ([]uuid.UUID, err
 		WHERE a.visibility != 'hidden' AND a.deleted_at IS NULL AND (
 			a.thumbhash IS NULL
 			OR NOT EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = a.id AND f.type = 'preview' AND f.is_edited = 0)
-			OR NOT EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = a.id AND f.type = 'thumbnail' AND f.is_edited = 0))`)
+			OR NOT EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = a.id AND f.type = 'thumbnail' AND f.is_edited = 0)
+			OR (a.is_edited = 1 AND NOT EXISTS (SELECT 1 FROM asset_files f
+				WHERE f.asset_id = a.id AND f.type = 'fullsize' AND f.is_edited = 1)))`)
+}
+
+func (repo *Repository) ForThumbnails(ctx context.Context, force bool) ([]uuid.UUID, error) {
+	if !force {
+		return repo.MissingThumbnails(ctx)
+	}
+
+	return database.Values[uuid.UUID](ctx, repo.db, `SELECT id FROM assets
+		WHERE visibility != 'hidden' AND deleted_at IS NULL`)
+}
+
+func (repo *Repository) ForMetadata(ctx context.Context, force bool) ([]uuid.UUID, error) {
+	if force {
+		return database.Values[uuid.UUID](ctx, repo.db, `SELECT id FROM assets WHERE deleted_at IS NULL`)
+	}
+
+	return database.Values[uuid.UUID](ctx, repo.db, `SELECT a.id FROM assets a
+		LEFT JOIN asset_job_status s ON s.asset_id = a.id
+		WHERE a.deleted_at IS NULL AND s.metadata_extracted_at IS NULL`)
+}
+
+func (repo *Repository) ForTranscode(ctx context.Context, force bool) ([]uuid.UUID, error) {
+	if force {
+		return database.Values[uuid.UUID](ctx, repo.db, `SELECT id FROM assets
+			WHERE type = 'VIDEO' AND deleted_at IS NULL`)
+	}
+
+	return database.Values[uuid.UUID](ctx, repo.db, `SELECT a.id FROM assets a
+		WHERE a.type = 'VIDEO' AND a.deleted_at IS NULL
+			AND NOT EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = a.id AND f.type = 'encoded_video')`)
 }

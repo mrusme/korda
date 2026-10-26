@@ -16,6 +16,10 @@ const (
 	TypeEncodedVideo Type = "encoded_video"
 )
 
+func (Type) Enum() []string {
+	return []string{string(TypeFullSize), string(TypePreview), string(TypeThumbnail), string(TypeSidecar), string(TypeEncodedVideo)}
+}
+
 type File struct {
 	ID            uuid.UUID
 	AssetID       uuid.UUID

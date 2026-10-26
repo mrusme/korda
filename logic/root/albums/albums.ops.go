@@ -11,6 +11,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/logic/helpers/access"
 	"tty.fail/mrus/korda/logic/helpers/bulk"
+	"tty.fail/mrus/korda/logic/helpers/emit"
 	logicusers "tty.fail/mrus/korda/logic/root/users"
 	"tty.fail/mrus/korda/models/album"
 	"tty.fail/mrus/korda/models/auth"
@@ -173,6 +174,11 @@ func Create(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *CreateIn
 	if err != nil {
 		return nil, err
 	}
+	for _, m := range members[1:] {
+		if err = gh.Jobs(rt).NotifyAlbumInvite(created.ID, m.UserID, a.User.Name); err != nil {
+			return nil, err
+		}
+	}
 
 	return load(ctx, rt, created, a.User.ID, false)
 }
@@ -272,8 +278,11 @@ func AddAssets(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.U
 	if !thumbnail.Valid {
 		thumbnail = uuid.NullUUID{UUID: added[0], Valid: true}
 	}
+	if err = repos.Album.Touch(ctx, id, thumbnail, at); err != nil {
+		return nil, err
+	}
 
-	return results, repos.Album.Touch(ctx, id, thumbnail, at)
+	return results, emit.AlbumUpdated(ctx, rt, id, uuid.NullUUID{UUID: a.User.ID, Valid: true}, true)
 }
 
 func AddToAlbums(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *AddToAlbumsInput) (bool, bulk.Reason, error) {
@@ -296,6 +305,7 @@ func AddToAlbums(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *Add
 	at := now()
 	success := false
 	var pairs []repoalbum.Pair
+	var updated []uuid.UUID
 	for _, albumID := range albumIDs {
 		present, err := repos.Album.AssetIDs(ctx, albumID, assetIDs)
 		if err != nil {
@@ -310,6 +320,7 @@ func AddToAlbums(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *Add
 			return false, "", err
 		}
 		success = true
+		updated = append(updated, albumID)
 		for _, assetID := range missing {
 			pairs = append(pairs, repoalbum.Pair{AlbumID: albumID, AssetID: assetID})
 		}
@@ -327,6 +338,11 @@ func AddToAlbums(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *Add
 	}
 	if !success {
 		return false, bulk.Duplicate, nil
+	}
+	for _, albumID := range updated {
+		if err = emit.AlbumUpdated(ctx, rt, albumID, uuid.NullUUID{UUID: a.User.ID, Valid: true}, true); err != nil {
+			return false, "", err
+		}
 	}
 
 	return true, "", nil
@@ -374,7 +390,7 @@ func RemoveAssets(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uui
 		}
 	}
 
-	return results, nil
+	return results, emit.AlbumUpdated(ctx, rt, id, uuid.NullUUID{}, false)
 }
 
 func AddUsers(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID, in *AddUsersInput) (*Details, error) {
@@ -410,6 +426,9 @@ func AddUsers(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UU
 			return nil, err
 		}
 		if err = repos.Album.AddUser(ctx, id, repoalbum.NewMember{UserID: userID, Role: role}, now()); err != nil {
+			return nil, err
+		}
+		if err = gh.Jobs(rt).NotifyAlbumInvite(id, userID, a.User.Name); err != nil {
 			return nil, err
 		}
 	}

@@ -277,6 +277,18 @@ type SyncAssetMetadataDeleteV1 struct {
 	Key     string `json:"key"`
 }
 
+type SyncAssetEditV1 struct {
+	ID         string          `json:"id"`
+	AssetID    string          `json:"assetId"`
+	Sequence   int64           `json:"sequence"`
+	Action     string          `json:"action"`
+	Parameters json.RawMessage `json:"parameters"`
+}
+
+type SyncAssetEditDeleteV1 struct {
+	EditID string `json:"editId"`
+}
+
 type SyncAck struct {
 	Type string `json:"type"`
 	Ack  string `json:"ack"`
@@ -443,6 +455,11 @@ func syncData(l logicsync.Line) (any, error) {
 		return SyncAssetMetadataV1{AssetID: row.AssetID.String(), Key: row.Key, Value: value}, nil
 	case reposync.AssetMetadataDelete:
 		return SyncAssetMetadataDeleteV1{AssetID: row.AssetID.String(), Key: row.Key}, nil
+	case reposync.AssetEdit:
+		return SyncAssetEditV1{ID: row.ID.String(), AssetID: row.AssetID.String(), Sequence: row.Sequence,
+			Action: row.Action, Parameters: json.RawMessage(row.Parameters)}, nil
+	case reposync.AssetEditDelete:
+		return SyncAssetEditDeleteV1{EditID: row.EditID.String()}, nil
 	}
 
 	return nil, fmt.Errorf("no sync payload for %T", l.Data)

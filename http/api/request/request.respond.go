@@ -26,6 +26,18 @@ func (req *Request) Respond(status int, v any) error {
 	return req.c.Send(body)
 }
 
+func (req *Request) RespondJSON(status int, body []byte) error {
+	req.c.Status(status)
+	req.c.Set(fiber.HeaderContentType, ContentType)
+	return req.c.Send(body)
+}
+
+func (req *Request) Empty(status int) error {
+	req.c.Status(status)
+	req.c.Response().ResetBody()
+	return nil
+}
+
 func (req *Request) NoContent() error {
 	return req.c.SendStatus(fiber.StatusNoContent)
 }

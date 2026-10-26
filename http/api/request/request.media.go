@@ -1,6 +1,7 @@
 package request
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -268,17 +269,26 @@ func (req *Request) QueryWith(key string, value string) string {
 }
 
 func (req *Request) Redirect(location string) error {
+	return req.RedirectStatus(fiber.StatusFound, location)
+}
+
+func (req *Request) RedirectStatus(status int, location string) error {
 	c := req.c
 	c.Set(fiber.HeaderLocation, location)
-	c.Status(fiber.StatusFound)
+	c.Status(status)
+	text := http.StatusText(status)
 
 	if html := c.Accepts(fiber.MIMETextPlain, fiber.MIMETextHTML); html == fiber.MIMETextHTML {
 		c.Set(fiber.HeaderContentType, "text/html; charset=utf-8")
-		return c.SendString("<p>Found. Redirecting to " + htmlEscape(location) + "</p>")
+		return c.SendString("<p>" + text + ". Redirecting to " + htmlEscape(location) + "</p>")
 	}
 
 	c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
-	return c.SendString("Found. Redirecting to " + location)
+	return c.SendString(text + ". Redirecting to " + location)
+}
+
+func (req *Request) Cookie(name string) string {
+	return req.c.Cookies(name)
 }
 
 func htmlEscape(s string) string {
@@ -286,3 +296,23 @@ func htmlEscape(s string) string {
 }
 
 var ErrNotAFile = errors.New("not a regular file")
+
+func (req *Request) SendArchive(name *string, write func(w io.Writer) error) error {
+	c := req.c
+	c.Status(fiber.StatusOK)
+	c.Set(fiber.HeaderContentType, fiber.MIMEOctetStream)
+	if name != nil {
+		disposition := ""
+		if *name != "" {
+			disposition = "attachment; filename*=UTF-8''" + encodeURIComponent(*name) + ".zip"
+		}
+		c.Set(fiber.HeaderContentDisposition, disposition)
+	}
+
+	return c.SendStreamWriter(func(w *bufio.Writer) {
+		if err := write(w); err != nil {
+			req.rt.Warn("download", "archive", "error", err)
+		}
+		_ = w.Flush()
+	})
+}

@@ -1,10 +1,14 @@
 package helpers
 
 import (
+	"context"
+
+	"tty.fail/mrus/korda/services/events"
 	"tty.fail/mrus/korda/services/jobs"
 	"tty.fail/mrus/korda/services/media"
 	"tty.fail/mrus/korda/services/mediaroot"
 	"tty.fail/mrus/korda/services/repositories"
+	"tty.fail/mrus/korda/services/websocket"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
 
@@ -34,4 +38,24 @@ func Jobs(rt *runtime.Runtime) *jobs.Jobs {
 		return srv.(*jobs.Jobs)
 	}
 	return nil
+}
+
+func Websocket(rt *runtime.Runtime) *websocket.Hub {
+	if srv, _ := rt.GetService("websocket"); srv != nil {
+		return srv.(*websocket.Hub)
+	}
+	return nil
+}
+
+func Events(rt *runtime.Runtime) *events.Bus {
+	if srv, _ := rt.GetService("events"); srv != nil {
+		return srv.(*events.Bus)
+	}
+	return nil
+}
+
+func Emit(ctx context.Context, rt *runtime.Runtime, event any) {
+	if bus := Events(rt); bus != nil {
+		bus.Emit(ctx, event)
+	}
 }

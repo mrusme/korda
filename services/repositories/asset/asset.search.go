@@ -65,6 +65,7 @@ func (b *builder) contains(column string, value string) string {
 }
 
 type Flat struct {
+	Caller           uuid.UUID
 	UserIDs          []uuid.UUID
 	Visibility       string
 	AlbumIDs         []uuid.UUID
@@ -114,6 +115,9 @@ func (f Flat) build(b *builder) {
 		b.where = append(b.where, `a.visibility != 'locked'`)
 	default:
 		b.where = append(b.where, `a.visibility = `+b.arg(f.Visibility))
+	}
+	if f.Caller != uuid.Nil {
+		b.where = append(b.where, `(a.visibility != 'locked' OR a.owner_id = `+b.arg(f.Caller)+`)`)
 	}
 
 	if len(f.PersonIDs) > 0 || f.OCR != "" {

@@ -84,6 +84,7 @@ func visibility(a *auth.Auth, v *asset.Visibility) string {
 
 func flat(a *auth.Auth, b *search.Base) repoasset.Flat {
 	f := repoasset.Flat{
+		Caller:        a.User.ID,
 		Visibility:    visibility(a, b.Visibility),
 		AlbumIDs:      parseIDs(b.AlbumIDs),
 		PersonIDs:     parseIDs(b.PersonIDs),

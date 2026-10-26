@@ -14,6 +14,7 @@ import (
 	"tty.fail/mrus/korda/helpers/optional"
 	logicassets "tty.fail/mrus/korda/logic/root/assets"
 	"tty.fail/mrus/korda/models/asset"
+	"tty.fail/mrus/korda/models/assetedit"
 	"tty.fail/mrus/korda/models/assetexif"
 	"tty.fail/mrus/korda/models/assetmetadata"
 	"tty.fail/mrus/korda/models/tag"
@@ -352,8 +353,13 @@ type AssetEdits struct {
 	Edits   []AssetEditAction `json:"edits"`
 }
 
-func NewAssetEdits(assetID uuid.UUID) AssetEdits {
-	return AssetEdits{AssetID: id(assetID), Edits: []AssetEditAction{}}
+func NewAssetEdits(assetID string, edits []assetedit.Edit) AssetEdits {
+	out := AssetEdits{AssetID: assetID, Edits: make([]AssetEditAction, 0, len(edits))}
+	for _, e := range edits {
+		out.Edits = append(out.Edits, AssetEditAction{ID: id(e.ID), Action: string(e.Action), Parameters: json.RawMessage(e.Parameters)})
+	}
+
+	return out
 }
 
 func NewAssetsWithExif(ctx context.Context, rt *runtime.Runtime, list []asset.Asset, viewer uuid.UUID) ([]Asset, error) {

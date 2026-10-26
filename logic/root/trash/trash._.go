@@ -8,6 +8,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/logic/helpers/access"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/permission"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
@@ -56,6 +57,7 @@ func RestoreAssets(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *B
 	if err := gh.Repositories(rt).Asset.RestoreAll(ctx, ids, now()); err != nil {
 		return 0, err
 	}
+	gh.Emit(ctx, rt, event.AssetsRestored{UserID: a.User.ID, AssetIDs: ids})
 
 	return int64(len(in.IDs)), nil
 }

@@ -6,6 +6,7 @@ import (
 	logicalbums "tty.fail/mrus/korda/logic/root/albums"
 	"tty.fail/mrus/korda/models/album"
 	repoalbum "tty.fail/mrus/korda/services/repositories/album"
+	repoasset "tty.fail/mrus/korda/services/repositories/asset"
 )
 
 type AlbumUser struct {
@@ -111,4 +112,20 @@ func NewMapMarkers(list []repoalbum.Marker) []MapMarker {
 	}
 
 	return out
+}
+
+func NewAssetMapMarkers(list []repoasset.Marker) []MapMarker {
+	out := make([]MapMarker, 0, len(list))
+	for _, m := range list {
+		out = append(out, MapMarker{ID: id(m.ID), Lat: m.Lat, Lon: m.Lon, City: nullString(m.City),
+			State: nullString(m.State), Country: nullString(m.Country)})
+	}
+
+	return out
+}
+
+type ReverseGeocode struct {
+	Country *string `json:"country"`
+	State   *string `json:"state"`
+	City    *string `json:"city"`
 }

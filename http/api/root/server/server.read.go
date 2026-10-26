@@ -54,3 +54,17 @@ func (r *Route) GetServerStatistics(c fiber.Ctx) error {
 
 	return req.Respond(fiber.StatusOK, view.NewStatistics(stats))
 }
+
+type versionCheck struct {
+	CheckedAt      *string `json:"checkedAt"`
+	ReleaseVersion *string `json:"releaseVersion"`
+}
+
+func (r *Route) GetVersionCheck(c fiber.Ctx) error {
+	req := request.New(r.Runtime, c, "getVersionCheck")
+	if err := req.Require(logicauth.Requirement{Permission: permission.ServerVersionCheck}); err != nil {
+		return err
+	}
+
+	return req.Respond(fiber.StatusOK, versionCheck{})
+}

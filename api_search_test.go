@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -221,4 +222,48 @@ func TestHEICUpload(t *testing.T) {
 	if preview := h.do(fiber.MethodGet, "/api/assets/"+id+"/thumbnail?size=preview", nil, bearer(token)...); preview.Status != fiber.StatusOK {
 		t.Errorf("heic preview = %d %s", preview.Status, preview.Body)
 	}
+}
+
+func TestSearchLeavesOutPartnersLockedAssets(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	viewer := bearer(admin)
+	viewerID := h.do(fiber.MethodGet, "/api/users/me", nil, viewer...).str(t, "id")
+	sharerID := h.createUser(admin, "mira@example.com", "Mira", "mira-password")
+	sharerToken := h.login("mira@example.com", "mira-password")
+	sharer := bearer(sharerToken)
+	h.uploadID(admin, "own.jpg", fixture(t, testmedia.PlainJPEG), "2023-01-02T03:04:05.000Z", "2023-01-02T03:04:05.000Z")
+	locked := h.uploadID(sharerToken, "partner-locked.jpg", fixture(t, testmedia.ExifJPEG), "2024-05-06T05:00:00.000Z", "2024-05-06T05:00:00.000Z")
+	h.uploadID(sharerToken, "partner-open.png", fixture(t, testmedia.PlainPNG), "2023-01-03T03:04:05.000Z", "2023-01-03T03:04:05.000Z")
+	h.runAllJobs()
+
+	for _, s := range [][]string{sharer, viewer} {
+		h.do(fiber.MethodPost, "/api/auth/pin-code", `{"pinCode":"123456"}`, s...).expect(t, 204, "")
+		h.do(fiber.MethodPost, "/api/auth/session/unlock", `{"pinCode":"123456"}`, s...).expect(t, 204, "")
+	}
+	h.do(fiber.MethodPut, "/api/assets", `{"ids":["`+locked+`"],"visibility":"locked"}`, sharer...).expect(t, 204, "")
+	h.do(fiber.MethodPost, "/api/partners", `{"sharedWithId":"`+viewerID+`"}`, sharer...)
+	if res := h.do(fiber.MethodPut, "/api/partners/"+sharerID, `{"inTimeline":true}`, viewer...); res.Status != 200 {
+		t.Fatalf("in timeline = %d %s", res.Status, res.Body)
+	}
+
+	for _, q := range []struct{ path, body string }{
+		{"/api/search/metadata", `{}`},
+		{"/api/search/metadata", `{"originalFileName":"partner-locked"}`},
+		{"/api/search/random", `{}`},
+		{"/api/search/large-assets?minFileSize=0", ``},
+		{"/api/search/metadata", `{"filter":{}}`},
+	} {
+		var body any
+		if q.body != "" {
+			body = q.body
+		}
+		res := h.do(fiber.MethodPost, q.path, body, viewer...)
+		if res.Status != 200 || bytes.Contains(res.Body, []byte(locked)) || !bytes.Contains(res.Body, []byte("partner-open.png")) && q.body != `{"originalFileName":"partner-locked"}` {
+			t.Errorf("%s %s = %d %s", q.path, q.body, res.Status, res.Body)
+		}
+	}
+	h.do(fiber.MethodPost, "/api/search/statistics", `{}`, viewer...).expect(t, 200, `{"total":2}`)
+	h.do(fiber.MethodPost, "/api/search/statistics", `{"filter":{}}`, viewer...).expect(t, 200, `{"total":2}`)
+	h.do(fiber.MethodPost, "/api/search/statistics", `{}`, sharer...).expect(t, 200, `{"total":2}`)
 }

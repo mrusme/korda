@@ -9,6 +9,8 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/http/api"
+	"tty.fail/mrus/korda/http/socket"
+	"tty.fail/mrus/korda/http/web/root/theme"
 	"tty.fail/mrus/korda/http/web/root/wellknown"
 	"xn--gckvb8fzb.com/glides/http/route"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -65,9 +67,15 @@ func (srv *Web) Startup() (err error) {
 	}
 
 	srv.app.Use(recover.New())
+	socket.Mount(srv.rt, srv.app, time.Duration(srv.cfg.RequestTimeout)*time.Second)
 	srv.app.Use("/"+route.For("API").AsURL(), srv.api.App())
 
 	if _, err = wellknown.New(srv.rt, srv.app); err != nil {
+		srv.rt.Error("status", "error", "error", err)
+		return err
+	}
+
+	if _, err = theme.New(srv.rt, srv.app); err != nil {
 		srv.rt.Error("status", "error", "error", err)
 		return err
 	}

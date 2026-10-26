@@ -8,6 +8,9 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	logicadminusers "tty.fail/mrus/korda/logic/root/admin/users"
 	logicassets "tty.fail/mrus/korda/logic/root/assets"
+	logicmemories "tty.fail/mrus/korda/logic/root/memories"
+	logicnotifications "tty.fail/mrus/korda/logic/root/notifications"
+	logictags "tty.fail/mrus/korda/logic/root/tags"
 	"tty.fail/mrus/korda/services/jobs"
 	"xn--gckvb8fzb.com/glides/models/asyncjob"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -84,9 +87,39 @@ func Install(rt *runtime.Runtime, h *handler.Handlers) {
 		return logicassets.Transcode(ctx, rt, p)
 	})))
 
+	h.Handle(jobs.Edit, jobs.Run, each(limited(sem, func(ctx context.Context, p jobs.AssetPayload) error {
+		return logicassets.RenderEdits(ctx, rt, p)
+	})))
+
 	h.Handle(jobs.DeleteAsset, jobs.Run, each(func(ctx context.Context, p jobs.DeleteAssetPayload) error {
 		return logicassets.Purge(ctx, rt, p.AssetID, p.DeleteOnDisk)
 	}))
+
+	h.Handle(jobs.NotifyAlbumInvite, jobs.Run, each(func(ctx context.Context, p jobs.AlbumInvitePayload) error {
+		return logicnotifications.AlbumInvite(ctx, rt, p.AlbumID, p.RecipientID, p.SenderName)
+	}))
+
+	h.Handle(jobs.NotifyAlbumUpdate, jobs.Run, each(func(ctx context.Context, p jobs.AlbumUpdatePayload) error {
+		return logicnotifications.AlbumUpdate(ctx, rt, p.AlbumID, p.RecipientID)
+	}))
+
+	for _, jobType := range []asyncjob.JobType{jobs.ThumbnailsAll, jobs.MetadataAll, jobs.TranscodeAll} {
+		h.Handle(jobType, jobs.Run, each(func(ctx context.Context, p jobs.ForcePayload) error {
+			return logicassets.QueueAll(ctx, rt, jobType, p.Force != nil && *p.Force)
+		}))
+	}
+
+	manual := map[asyncjob.JobType]func(ctx context.Context, rt *runtime.Runtime) error{
+		jobs.UserDeleteCheck: logicadminusers.QueueDueDeletions,
+		jobs.MemoryCleanup:   logicmemories.Cleanup,
+		jobs.MemoryGenerate:  logicmemories.Generate,
+		jobs.TagCleanup:      logictags.Cleanup,
+	}
+	for jobType, run := range manual {
+		h.Handle(jobType, jobs.Run, each(func(ctx context.Context, _ jobs.ManualPayload) error {
+			return run(ctx, rt)
+		}))
+	}
 
 	h.Handle(jobs.EmptyTrash, jobs.Run, each(func(ctx context.Context, _ jobs.EmptyTrashPayload) error {
 		return logicassets.QueueDeleted(ctx, rt)

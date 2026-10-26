@@ -20,9 +20,11 @@ import (
 	"tty.fail/mrus/korda/helpers/jsonb"
 	"tty.fail/mrus/korda/helpers/mimetypes"
 	"tty.fail/mrus/korda/helpers/sanitize"
+	"tty.fail/mrus/korda/logic/helpers/emit"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetmetadata"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/permission"
 	"tty.fail/mrus/korda/models/sharedlink"
 	"tty.fail/mrus/korda/services/jobs"
@@ -179,7 +181,12 @@ func beforeLink(ctx context.Context, rt *runtime.Runtime, userID uuid.UUID, moti
 		return nil
 	}
 
-	return gh.Repositories(rt).Asset.SetVisibility(ctx, []uuid.UUID{motionID}, asset.VisibilityHidden, at)
+	if err = gh.Repositories(rt).Asset.SetVisibility(ctx, []uuid.UUID{motionID}, asset.VisibilityHidden, at); err != nil {
+		return err
+	}
+	gh.Emit(ctx, rt, event.AssetHidden{UserID: userID, AssetID: motionID})
+
+	return nil
 }
 
 func metadataItems(in []MetadataItemInput, at time.Time) ([]assetmetadata.Item, error) {
@@ -331,7 +338,11 @@ func addToSharedLink(ctx context.Context, rt *runtime.Runtime, link *sharedlink.
 		return err
 	}
 
-	return repos.Album.AddAssets(ctx, []repoalbum.Pair{{AlbumID: link.AlbumID.UUID, AssetID: assetID}}, now())
+	if err := repos.Album.AddAssets(ctx, []repoalbum.Pair{{AlbumID: link.AlbumID.UUID, AssetID: assetID}}, now()); err != nil {
+		return err
+	}
+
+	return emit.AlbumUpdated(ctx, rt, link.AlbumID.UUID, uuid.NullUUID{}, true)
 }
 
 func assetType(path string) asset.Type {
