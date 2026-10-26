@@ -11,6 +11,9 @@ const DefaultTitle string = "korda"
 var Routes route.Table = route.Table{
 	"Root":                    {Hierarchy: []string{"root"}},
 	"CustomCSS":               {Hierarchy: []string{"root", "custom.css"}, NoBreadcrumb: true},
+	"Share":                   {Hierarchy: []string{"root", "share"}, NoBreadcrumb: true},
+	"ShareSlug":               {Hierarchy: []string{"root", "s"}, NoBreadcrumb: true},
+	"Static":                  {Hierarchy: []string{"root", "static"}, NoBreadcrumb: true},
 	"WellKnown":               {Hierarchy: []string{"root", ".well-known"}, NoBreadcrumb: true},
 	"WellKnownImmich":         {Hierarchy: []string{"root", ".well-known", "immich"}, NoBreadcrumb: true},
 	"API":                     {Hierarchy: []string{"root", "api"}, NoBreadcrumb: true},

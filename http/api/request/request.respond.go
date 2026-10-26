@@ -78,7 +78,15 @@ func (req *Request) ClearAuthCookies() {
 }
 
 func (req *Request) SharedLinkTokens() []string {
-	raw := req.c.Cookies(CookieSharedLinkToken)
+	return SharedLinkTokens(req.c)
+}
+
+func (req *Request) AddSharedLinkToken(token string) {
+	AddSharedLinkToken(req.c, token)
+}
+
+func SharedLinkTokens(c fiber.Ctx) []string {
+	raw := c.Cookies(CookieSharedLinkToken)
 	if raw == "" {
 		return []string{}
 	}
@@ -92,20 +100,20 @@ func (req *Request) SharedLinkTokens() []string {
 	return strings.Split(raw, ",")
 }
 
-func (req *Request) AddSharedLinkToken(token string) {
-	tokens := req.SharedLinkTokens()
+func AddSharedLinkToken(c fiber.Ctx, token string) {
+	tokens := SharedLinkTokens(c)
 	if !slices.Contains(tokens, token) {
 		tokens = append(tokens, token)
 	}
 
-	req.c.Cookie(&fiber.Cookie{
+	c.Cookie(&fiber.Cookie{
 		Name:     CookieSharedLinkToken,
 		Value:    encodeURIComponent(strings.Join(tokens, ",")),
 		Path:     "/",
 		MaxAge:   int(sharedLinkMaxAge / time.Second),
 		Expires:  time.Now().Add(sharedLinkMaxAge),
 		HTTPOnly: true,
-		Secure:   req.c.Secure(),
+		Secure:   c.Secure(),
 		SameSite: fiber.CookieSameSiteLaxMode,
 	})
 }

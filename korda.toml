@@ -22,15 +22,18 @@ EnableIPValidation = false
 TrustProxy         = false
 TrustLoopback      = true
 TrustProxies       = []
-# Behind a reverse proxy, something like this:
+# Behind a reverse proxy on this machine, see the README:
+# BindIP             = "127.0.0.1"
+# ProxyHeader        = "X-Forwarded-For"
+# EnableIPValidation = true
 # TrustProxy         = true
 # TrustLoopback      = true
-# TrustProxies       = ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+# TrustProxies       = [] # only the proxy's own address when it runs elsewhere
 ReduceMemoryUsage  = false
 ServerHeader       = ""
 
 [API]
-RateLimitAuth = 10 # logins per minute and client address, 0 disables
+RateLimitAuth = 10 # logins per minute and client address, for accounts and shared links each, 0 disables
 CORSOrigins   = [] # browser origins that may call the API; empty means no CORS headers
 
 [[Target]]

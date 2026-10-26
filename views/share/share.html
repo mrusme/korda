@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{.Title}}</title>
+{{- with .Meta}}
+<meta name="description" content="{{.Description}}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Description}}">
+{{- with .Image}}
+<meta property="og:image" content="{{.}}">
+{{- end}}
+{{- end}}
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="{{.Stylesheet}}">
+</head>
+<body>
+{{- if .NotFound}}
+<main class="notice">
+<h1>Link not found</h1>
+<p>This shared link doesn't exist or has expired.</p>
+</main>
+{{- else if .Password}}
+<main class="notice">
+<h1>Password required</h1>
+<form method="post">
+<label for="password">Password</label>
+<input type="password" id="password" name="password" autocomplete="current-password" required autofocus>
+{{- with .Error}}
+<p class="error">{{.}}</p>
+{{- end}}
+<button type="submit">Open</button>
+</form>
+</main>
+{{- else}}
+<header>
+<h1>{{.Title}}</h1>
+{{- with .Description}}
+<p class="description">{{.}}</p>
+{{- end}}
+<p class="count">{{.Count}}</p>
+{{- range .Downloads}}
+<form method="post" action="{{.Action}}">
+<input type="hidden" name="assetIds" value="{{.AssetIDs}}">
+<input type="hidden" name="archiveName" value="{{.Name}}">
+<input type="hidden" name="edited" value="true">
+<button type="submit">{{.Label}}</button>
+</form>
+{{- end}}
+</header>
+<main>
+<ul class="grid">
+{{- range .Tiles}}
+<li><a href="{{.Href}}"><img src="{{.Thumbnail}}" alt="" loading="lazy">{{with .Duration}}<span class="duration">{{.}}</span>{{end}}</a></li>
+{{- end}}
+</ul>
+</main>
+{{- end}}
+</body>
+</html>

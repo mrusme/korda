@@ -28,11 +28,12 @@ const (
 )
 
 type API struct {
-	rt      *runtime.Runtime
-	cfg     gh.APIConfig
-	timeout time.Duration
-	app     *fiber.App
-	r       route.IRouteController
+	rt        *runtime.Runtime
+	cfg       gh.APIConfig
+	timeout   time.Duration
+	app       *fiber.App
+	r         route.IRouteController
+	linkLogin fiber.Handler
 }
 
 func New(rt *runtime.Runtime, cfg gh.APIConfig, timeout time.Duration) (*API, error) {
@@ -40,6 +41,7 @@ func New(rt *runtime.Runtime, cfg gh.APIConfig, timeout time.Duration) (*API, er
 	srv.rt = rt
 	srv.cfg = cfg
 	srv.timeout = timeout
+	srv.linkLogin = srv.loginLimiter("shared-link-login")
 
 	srv.app = fiber.New(fiber.Config{
 		AppName:       "korda-api",
@@ -55,6 +57,10 @@ func New(rt *runtime.Runtime, cfg gh.APIConfig, timeout time.Duration) (*API, er
 
 func (srv *API) App() *fiber.App {
 	return srv.app
+}
+
+func (srv *API) SharedLinkLoginLimiter() fiber.Handler {
+	return srv.linkLogin
 }
 
 func correlationID() string {
@@ -105,7 +111,7 @@ func (srv *API) loadMiddlewares() {
 	}
 
 	srv.app.Post(routes.APIPath("APIAuthLogin"), srv.loginLimiter("login"))
-	srv.app.Post(routes.APIPath("APISharedLinksLogin"), srv.loginLimiter("shared-link-login"))
+	srv.app.Post(routes.APIPath("APISharedLinksLogin"), srv.linkLogin)
 }
 
 func (srv *API) loginLimiter(name string) fiber.Handler {

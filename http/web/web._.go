@@ -7,11 +7,14 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/gofiber/fiber/v3/middleware/static"
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/http/api"
 	"tty.fail/mrus/korda/http/socket"
+	"tty.fail/mrus/korda/http/web/root/share"
 	"tty.fail/mrus/korda/http/web/root/theme"
 	"tty.fail/mrus/korda/http/web/root/wellknown"
+	assets "tty.fail/mrus/korda/static"
 	"xn--gckvb8fzb.com/glides/http/route"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
@@ -76,6 +79,14 @@ func (srv *Web) Startup() (err error) {
 	}
 
 	if _, err = theme.New(srv.rt, srv.app); err != nil {
+		srv.rt.Error("status", "error", "error", err)
+		return err
+	}
+
+	srv.app.Get("/"+route.For("Static").AsURL()+"*", static.New("", static.Config{FS: assets.FS}))
+
+	timeout := time.Duration(srv.cfg.RequestTimeout) * time.Second
+	if _, err = share.New(srv.rt, srv.app, srv.api.SharedLinkLoginLimiter(), timeout); err != nil {
 		srv.rt.Error("status", "error", "error", err)
 		return err
 	}
