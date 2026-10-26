@@ -2,6 +2,8 @@ module tty.fail/mrus/korda
 
 go 1.27.2
 
+toolchain go1.27.3
+
 require (
 	github.com/gen2brain/h265 v0.2.3
 	github.com/gofiber/fiber/v3 v3.5.0
@@ -19,7 +21,7 @@ require (
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.60.1
-	xn--gckvb8fzb.com/glides v0.3.1
+	xn--gckvb8fzb.com/glides v0.3.2
 )
 
 require (
