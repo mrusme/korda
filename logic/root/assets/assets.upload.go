@@ -20,6 +20,7 @@ import (
 	"tty.fail/mrus/korda/helpers/jsonb"
 	"tty.fail/mrus/korda/helpers/mimetypes"
 	"tty.fail/mrus/korda/helpers/sanitize"
+	"tty.fail/mrus/korda/logic/helpers/access"
 	"tty.fail/mrus/korda/logic/helpers/emit"
 	"tty.fail/mrus/korda/models/asset"
 	"tty.fail/mrus/korda/models/assetmetadata"
@@ -142,6 +143,10 @@ func Discard(rt *runtime.Runtime, files ...*StoredFile) {
 func DuplicateByChecksum(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, header string) (uuid.UUID, bool, error) {
 	if header == "" {
 		return uuid.Nil, false, nil
+	}
+
+	if err := access.Require(ctx, rt, a, permission.AssetUpload, a.User.ID); err != nil {
+		return uuid.Nil, false, err
 	}
 
 	existing, err := gh.Repositories(rt).Asset.ByChecksum(ctx, a.User.ID, checksum.Decode(header))

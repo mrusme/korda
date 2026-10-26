@@ -235,6 +235,9 @@ func TestConformanceSharing(t *testing.T) {
 			t.Run(st.name, func(t *testing.T) {
 				want := immich.run(t, st)
 				got := korda.run(t, st)
+				if deviated(t, st, want, got, func(body string) string { return sharingNormalize(body, days...) }) {
+					return
+				}
 				if want.Status != got.Status {
 					t.Errorf("status = %d, Immich %d\nkorda  %s\nImmich %s", got.Status, want.Status, got.Body, want.Body)
 					return
@@ -315,11 +318,19 @@ func TestConformanceSharing(t *testing.T) {
 		{name: "link me individual", method: "GET", path: "/api/shared-links/me?key={ind.key}"},
 		{name: "link me without password", method: "GET", path: "/api/shared-links/me?key={alb.key}"},
 		{name: "link login wrong", method: "POST", path: "/api/shared-links/login?key={alb.key}", body: `{"password":"nope"}`},
-		{name: "link login", method: "POST", path: "/api/shared-links/login?key={alb.key}", body: `{"password":"secret"}`},
-		{name: "link asset stripped", method: "GET", path: "/api/assets/{exif}?key={alb.key}"},
+		{name: "link login", method: "POST", path: "/api/shared-links/login?key={alb.key}", body: `{"password":"secret"}`, capture: "login"},
+		{name: "link asset without password", method: "GET", path: "/api/assets/{exif}?key={alb.key}", deviates: passwordRequired},
+		{name: "link thumbnail without password", method: "GET", path: "/api/assets/{exif}/thumbnail?key={alb.key}", deviates: passwordRequired},
+		{name: "link album without password", method: "GET", path: "/api/albums/{album.id}?key={alb.key}", deviates: passwordRequired},
+		{name: "link markers without password", method: "GET", path: "/api/albums/{album.id}/map-markers?key={alb.key}", deviates: passwordRequired},
+		{name: "link buckets without password", method: "GET", path: "/api/timeline/buckets?albumId={album.id}&key={alb.key}", deviates: passwordRequired},
+		{name: "link search without password", method: "POST", path: "/api/search/metadata?key={alb.key}", body: `{"albumIds":["{album.id}"]}`, deviates: passwordRequired},
+		{name: "link asset stripped", method: "GET", path: "/api/assets/{exif}?key={alb.key}", headers: []string{"Cookie", "{login.cookie}"}},
 		{name: "link asset", method: "GET", path: "/api/assets/{exif}?key={ind.key}"},
-		{name: "link album info", method: "GET", path: "/api/albums/{album.id}?key={alb.key}"},
-		{name: "link markers", method: "GET", path: "/api/albums/{album.id}/map-markers?key={alb.key}"},
+		{name: "link album info", method: "GET", path: "/api/albums/{album.id}?key={alb.key}", headers: []string{"Cookie", "{login.cookie}"}},
+		{name: "link markers", method: "GET", path: "/api/albums/{album.id}/map-markers?key={alb.key}", headers: []string{"Cookie", "{login.cookie}"}},
+		{name: "link buckets", method: "GET", path: "/api/timeline/buckets?albumId={album.id}&key={alb.key}", headers: []string{"Cookie", "{login.cookie}"}},
+		{name: "link search stripped", method: "POST", path: "/api/search/metadata?key={alb.key}", body: `{"albumIds":["{album.id}"]}`, headers: []string{"Cookie", "{login.cookie}"}, deviates: &deviation{status: fiber.StatusOK, body: `{"albums":{"total":0,"count":0,"items":[],"facets":[]},"assets":{"total":3,"count":3,"items":[{"id":"<uuid>","type":"IMAGE","originalMimeType":"image/jpeg","thumbhash":"<thumbhash>","localDateTime":"2024-05-06T07:08:09.123Z","duration":null,"livePhotoVideoId":null,"hasMetadata":false,"width":480,"height":640},{"id":"<uuid>","type":"IMAGE","originalMimeType":"image/png","thumbhash":"<thumbhash>","localDateTime":"2021-01-02T03:04:05.000Z","duration":null,"livePhotoVideoId":null,"hasMetadata":false,"width":400,"height":300},{"id":"<uuid>","type":"IMAGE","originalMimeType":"image/jpeg","thumbhash":"<thumbhash>","localDateTime":"2020-02-03T04:05:06.000Z","duration":null,"livePhotoVideoId":null,"hasMetadata":false,"width":300,"height":200}],"facets":[],"nextPage":null,"nextCursor":null}}`}},
 		{name: "link forbidden", method: "GET", path: "/api/albums?key={ind.key}"},
 		{name: "link add assets", method: "PUT", path: "/api/shared-links/{ind.id}/assets", body: `{"assetIds":["{exif}","{png}"]}`, auth: "owner"},
 		{name: "link remove assets", method: "DELETE", path: "/api/shared-links/{ind.id}/assets", body: `{"assetIds":["{png}","{png}"]}`, auth: "owner"},

@@ -21,7 +21,7 @@ type SearchAlbums struct {
 type SearchAssets struct {
 	Total      int     `json:"total"`
 	Count      int     `json:"count"`
-	Items      []Asset `json:"items"`
+	Items      any     `json:"items"`
 	Facets     []any   `json:"facets"`
 	NextPage   *string `json:"nextPage"`
 	NextCursor *string `json:"nextCursor"`
@@ -88,7 +88,7 @@ func NewAssetList(ctx context.Context, rt *runtime.Runtime, list []asset.Asset, 
 	return out, nil
 }
 
-func NewSearchResponse(items []Asset, nextPage *string, nextCursor *string) SearchResponse {
+func NewSearchResponse[T any](items []T, nextPage *string, nextCursor *string) SearchResponse {
 	return SearchResponse{
 		Albums: SearchAlbums{Items: []any{}, Facets: []any{}},
 		Assets: SearchAssets{

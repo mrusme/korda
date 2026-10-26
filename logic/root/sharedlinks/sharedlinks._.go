@@ -3,11 +3,8 @@ package sharedlinks
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"errors"
-	"slices"
 	"strings"
 	"time"
 
@@ -118,11 +115,6 @@ type Details struct {
 
 func now() time.Time {
 	return time.Now().UTC()
-}
-
-func Token(id uuid.UUID, password string) string {
-	sum := sha256.Sum256([]byte(id.String() + "-" + password))
-	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
 func nullString(v *string) sql.Null[string] {
@@ -264,7 +256,7 @@ func Get(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID) (
 	return full(ctx, rt, link, false)
 }
 
-func Mine(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, tokens []string) (*Details, error) {
+func Mine(ctx context.Context, rt *runtime.Runtime, a *auth.Auth) (*Details, error) {
 	if a.SharedLink == nil {
 		return nil, errs.ErrForbidden
 	}
@@ -272,9 +264,6 @@ func Mine(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, tokens []strin
 	link, err := findOrFail(ctx, rt, a.User.ID, a.SharedLink.ID)
 	if err != nil {
 		return nil, err
-	}
-	if link.Password.Valid && link.Password.V != "" && !slices.Contains(tokens, Token(link.ID, link.Password.V)) {
-		return nil, errs.ErrSharedLinkPasswordMissing
 	}
 
 	return full(ctx, rt, link, !link.ShowExif)
@@ -289,7 +278,7 @@ func Login(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *LoginInpu
 	if err != nil {
 		return nil, "", err
 	}
-	if !link.Password.Valid || link.Password.V == "" {
+	if !link.HasPassword() {
 		return nil, "", errs.ErrSharedLinkNoPassword
 	}
 	if link.Password.V != in.Password {
@@ -301,7 +290,7 @@ func Login(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *LoginInpu
 		return nil, "", err
 	}
 
-	return d, Token(link.ID, link.Password.V), nil
+	return d, link.Token(), nil
 }
 
 func parseIDs(ids []string) []uuid.UUID {

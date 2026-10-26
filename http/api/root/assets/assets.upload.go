@@ -22,6 +22,7 @@ func (r *Route) UploadAsset(c fiber.Ctx) error {
 
 	id, duplicate, err := logicassets.DuplicateByChecksum(req.Context(), r.Runtime, req.Auth, c.Get(HeaderChecksum))
 	if err != nil {
+		req.Drain()
 		return err
 	}
 	if duplicate {

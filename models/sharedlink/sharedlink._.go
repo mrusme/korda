@@ -1,7 +1,9 @@
 package sharedlink
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,4 +34,13 @@ type SharedLink struct {
 	ShowExif      bool
 	Password      sql.Null[string]
 	Slug          sql.Null[string]
+}
+
+func (l *SharedLink) HasPassword() bool {
+	return l.Password.Valid && l.Password.V != ""
+}
+
+func (l *SharedLink) Token() string {
+	sum := sha256.Sum256([]byte(l.ID.String() + "-" + l.Password.V))
+	return base64.StdEncoding.EncodeToString(sum[:])
 }

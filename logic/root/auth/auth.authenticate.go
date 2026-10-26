@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"tty.fail/mrus/korda/errs"
@@ -37,6 +38,11 @@ func Authenticate(
 	if a.SharedLink != nil && !req.SharedLink {
 		rt.Warn("auth", "denied", "reason", "non-shared route", "uri", uri)
 		return nil, errs.ErrForbidden
+	}
+
+	if a.SharedLink != nil && a.SharedLink.HasPassword() && !req.NoSharedLinkPassword &&
+		!slices.Contains(creds.SharedLinkTokens, a.SharedLink.Token()) {
+		return nil, errs.ErrSharedLinkPasswordMissing
 	}
 
 	if a.APIKey != nil && !req.NoPermission &&

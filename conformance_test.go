@@ -30,15 +30,42 @@ const (
 )
 
 type step struct {
-	name    string
-	method  string
-	path    string
-	body    string
-	auth    string
-	headers []string
-	mode    compareMode
-	capture string
-	header  string
+	name     string
+	method   string
+	path     string
+	body     string
+	auth     string
+	headers  []string
+	mode     compareMode
+	capture  string
+	header   string
+	deviates *deviation
+}
+
+type deviation struct {
+	status int
+	body   string
+}
+
+var passwordRequired = &deviation{status: fiber.StatusUnauthorized, body: `{"message":"Password required"}`}
+
+func deviated(t *testing.T, st step, want apiResponse, got apiResponse, norm func(string) string) bool {
+	t.Helper()
+
+	d := st.deviates
+	if d == nil {
+		return false
+	}
+	t.Logf("deviation: korda %d, Immich %d %s", got.Status, want.Status, want.Header.Get(fiber.HeaderContentType))
+	body := norm(d.body)
+	if got.Status != d.status || norm(string(got.Body)) != body {
+		t.Errorf("korda = %d %s, want the deviation %d %s", got.Status, got.Body, d.status, d.body)
+	}
+	if want.Status == d.status && norm(string(want.Body)) == body {
+		t.Errorf("Immich returns %d %s as well, the deviation is gone", want.Status, want.Body)
+	}
+
+	return true
 }
 
 type side struct {
@@ -59,7 +86,10 @@ func (s *side) expand(text string) string {
 func (s *side) run(t *testing.T, st step) apiResponse {
 	t.Helper()
 
-	headers := append([]string{}, st.headers...)
+	headers := make([]string, 0, len(st.headers)+2)
+	for _, h := range st.headers {
+		headers = append(headers, s.expand(h))
+	}
 	switch st.auth {
 	case "":
 	case "key":
@@ -76,6 +106,11 @@ func (s *side) run(t *testing.T, st step) apiResponse {
 				if v, ok := body[field].(string); ok {
 					s.vars[st.capture+"."+field] = v
 				}
+			}
+		}
+		for _, cookie := range res.Header.Values(fiber.HeaderSetCookie) {
+			if pair, _, _ := strings.Cut(cookie, ";"); strings.HasPrefix(pair, "immich_shared_link_token=") {
+				s.vars[st.capture+".cookie"] = pair
 			}
 		}
 	}
@@ -328,6 +363,10 @@ func compareSteps(t *testing.T, immich *side, korda *side, steps []step) {
 			want := immich.run(t, st)
 			got := korda.run(t, st)
 			t.Logf("%s %s: korda %d, Immich %d", st.method, st.path, got.Status, want.Status)
+
+			if deviated(t, st, want, got, referenceNormalize) {
+				return
+			}
 
 			if want.Status != got.Status {
 				t.Errorf("status = %d, Immich %d\nkorda  %s\nImmich %s", got.Status, want.Status, got.Body, want.Body)

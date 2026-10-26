@@ -243,6 +243,28 @@ func TestConformanceTimeline(t *testing.T) {
 		encoded, _ := json.Marshal(zipEntries(t, res.Body))
 		return res.Header.Get(fiber.HeaderContentType) + " " + string(encoded)
 	}
+	type downloadArchive struct {
+		Size     int64    `json:"size"`
+		AssetIDs []string `json:"assetIds"`
+	}
+	unorderedDownload := func(t *testing.T, s *side, res apiResponse) string {
+		var info struct {
+			TotalSize int64             `json:"totalSize"`
+			Archives  []downloadArchive `json:"archives"`
+		}
+		if err := json.Unmarshal([]byte(plain(t, s, res)), &info); err != nil {
+			t.Fatalf("%s download info: %v", s.name, err)
+		}
+		for i := range info.Archives {
+			slices.Sort(info.Archives[i].AssetIDs)
+		}
+		slices.SortFunc(info.Archives, func(a, b downloadArchive) int {
+			return strings.Compare(strings.Join(a.AssetIDs, ","), strings.Join(b.AssetIDs, ","))
+		})
+		encoded, _ := json.Marshal(info)
+		return string(encoded)
+	}
+	unordered := map[string]bool{"download info": true, "download info split": true}
 
 	for _, st := range []step{
 		{name: "buckets", method: "GET", path: "/api/timeline/buckets", auth: "owner"},
@@ -266,6 +288,10 @@ func TestConformanceTimeline(t *testing.T) {
 		{name: "map markers archived", method: "GET", path: "/api/map/markers?isArchived=true&withPartners=true", auth: "owner"},
 		{name: "map markers by date", method: "GET", path: "/api/map/markers?fileCreatedAfter=2025-01-01T00:00:00.000Z", auth: "owner"},
 	} {
+		if unordered[st.name] {
+			compare(t, st, unorderedDownload)
+			continue
+		}
 		compare(t, st, plain)
 	}
 	for _, month := range []string{"2024-05-01", "2021-01-01", "2020-02-01"} {

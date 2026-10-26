@@ -14,20 +14,22 @@ const (
 )
 
 type Credentials struct {
-	ShareKey     string
-	ShareSlug    string
-	SessionToken string
-	APIKey       string
-	UserAgent    string
-	DeviceModel  string
-	DeviceType   string
+	ShareKey         string
+	ShareSlug        string
+	SharedLinkTokens []string
+	SessionToken     string
+	APIKey           string
+	UserAgent        string
+	DeviceModel      string
+	DeviceType       string
 }
 
 type Requirement struct {
-	Permission   permission.Permission
-	NoPermission bool
-	Admin        bool
-	SharedLink   bool
+	Permission           permission.Permission
+	NoPermission         bool
+	Admin                bool
+	SharedLink           bool
+	NoSharedLinkPassword bool
 }
 
 func (r Requirement) permission() permission.Permission {

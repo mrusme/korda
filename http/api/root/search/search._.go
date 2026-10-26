@@ -57,6 +57,14 @@ func (r *Route) SearchAssets(c fiber.Ctx) error {
 		return err
 	}
 
+	if link := req.Auth.SharedLink; link != nil && !link.ShowExif {
+		stripped := make([]view.StrippedAsset, 0, len(page.Items))
+		for i := range page.Items {
+			stripped = append(stripped, view.NewStrippedAsset(&page.Items[i], false))
+		}
+		return req.Respond(fiber.StatusOK, view.NewSearchResponse(stripped, page.NextPage, page.NextCursor))
+	}
+
 	items, err := view.NewAssetList(req.Context(), r.Runtime, page.Items, req.Auth.User.ID, page.WithExif, false)
 	if err != nil {
 		return err

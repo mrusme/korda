@@ -54,6 +54,7 @@ var Routes route.Table = route.Table{
 	"APISync":                 {Hierarchy: []string{"root", "api", "sync"}, NoBreadcrumb: true},
 	"APISessions":             {Hierarchy: []string{"root", "api", "sessions"}, NoBreadcrumb: true},
 	"APISharedLinks":          {Hierarchy: []string{"root", "api", "shared-links"}, NoBreadcrumb: true},
+	"APISharedLinksLogin":     {Hierarchy: []string{"root", "api", "shared-links", "login"}, NoBreadcrumb: true},
 	"APISession":              {Hierarchy: []string{"root", "api", "sessions", ":id"}, NoBreadcrumb: true},
 	"APISystemConfig":         {Hierarchy: []string{"root", "api", "system-config"}, NoBreadcrumb: true},
 	"APISystemMetadata":       {Hierarchy: []string{"root", "api", "system-metadata"}, NoBreadcrumb: true},

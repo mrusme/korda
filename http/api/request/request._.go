@@ -81,8 +81,9 @@ func (req *Request) Credentials() logicauth.Credentials {
 	c := req.c
 
 	return logicauth.Credentials{
-		ShareKey:  first(c.Get("x-immich-share-key"), c.Query("key")),
-		ShareSlug: first(c.Get("x-immich-share-slug"), c.Query("slug")),
+		ShareKey:         first(c.Get("x-immich-share-key"), c.Query("key")),
+		ShareSlug:        first(c.Get("x-immich-share-slug"), c.Query("slug")),
+		SharedLinkTokens: req.SharedLinkTokens(),
 		SessionToken: first(
 			c.Get("x-immich-user-token"),
 			c.Get("x-immich-session-token"),

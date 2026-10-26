@@ -78,7 +78,7 @@ func (r *Route) CreateSharedLink(c fiber.Ctx) error {
 
 func (r *Route) SharedLinkLogin(c fiber.Ctx) error {
 	req := request.New(r.Runtime, c, "sharedLinkLogin")
-	if err := req.Require(logicauth.Requirement{SharedLink: true}); err != nil {
+	if err := req.Require(logicauth.Requirement{SharedLink: true, NoSharedLinkPassword: true}); err != nil {
 		return err
 	}
 
@@ -102,7 +102,7 @@ func (r *Route) GetMySharedLink(c fiber.Ctx) error {
 		return err
 	}
 
-	d, err := logicsharedlinks.Mine(req.Context(), r.Runtime, req.Auth, req.SharedLinkTokens())
+	d, err := logicsharedlinks.Mine(req.Context(), r.Runtime, req.Auth)
 	if err != nil {
 		return err
 	}

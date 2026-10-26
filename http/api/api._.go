@@ -104,10 +104,11 @@ func (srv *API) loadMiddlewares() {
 		}))
 	}
 
-	srv.app.Post(routes.APIPath("APIAuthLogin"), srv.loginLimiter())
+	srv.app.Post(routes.APIPath("APIAuthLogin"), srv.loginLimiter("login"))
+	srv.app.Post(routes.APIPath("APISharedLinksLogin"), srv.loginLimiter("shared-link-login"))
 }
 
-func (srv *API) loginLimiter() fiber.Handler {
+func (srv *API) loginLimiter(name string) fiber.Handler {
 	return limiter.New(limiter.Config{
 		Expiration:     limitWindow,
 		DisableHeaders: true,
@@ -118,7 +119,7 @@ func (srv *API) loginLimiter() fiber.Handler {
 			return srv.cfg.RateLimitAuth
 		},
 		KeyGenerator: func(c fiber.Ctx) string {
-			return "login:" + c.IP()
+			return name + ":" + c.IP()
 		},
 		LimitReached: func(c fiber.Ctx) error {
 			return problem.Respond(c, srv.rt, errs.ErrTooManyRequests)

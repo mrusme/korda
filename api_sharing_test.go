@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -241,8 +242,9 @@ func TestSharedLinks(t *testing.T) {
 	if res := h.do(fiber.MethodGet, "/api/shared-links/me"+albKey, nil, "Cookie", cookie); res.Status != 200 || !strings.Contains(string(res.Body), `"album":{"albumName":"Holiday"`) {
 		t.Errorf("me with cookie = %d %s", res.Status, res.Body)
 	}
+	h.do(fiber.MethodGet, "/api/assets/"+exif+albKey, nil).expect(t, 401, `{"message":"Password required"}`)
 
-	stripped := h.do(fiber.MethodGet, "/api/assets/"+exif+albKey, nil)
+	stripped := h.do(fiber.MethodGet, "/api/assets/"+exif+albKey, nil, "Cookie", cookie)
 	if got := normalizeAsset(string(stripped.Body)); got != `{"id":"<uuid>","type":"IMAGE","originalMimeType":"image/jpeg","thumbhash":"<thumbhash>","localDateTime":"2024-05-06T07:08:09.123Z","duration":null,"livePhotoVideoId":null,"hasMetadata":false,"width":480,"height":640}` {
 		t.Errorf("stripped = %s", got)
 	}
@@ -250,24 +252,25 @@ func TestSharedLinks(t *testing.T) {
 		t.Errorf("asset through a link = %s", res.Body)
 	}
 	h.do(fiber.MethodGet, "/api/assets/"+plain+indKey, nil).expect(t, 400, `{"message":"Not found or no asset.read access"}`)
-	h.do(fiber.MethodGet, "/api/assets/"+exif+"/original"+albKey, nil).expect(t, 404, `{"message":"Not Found"}`)
-	if res := h.do(fiber.MethodGet, "/api/assets/"+exif+"/thumbnail"+albKey, nil); res.Status != 200 ||
+	h.do(fiber.MethodGet, "/api/assets/"+exif+"/original"+albKey, nil, "Cookie", cookie).expect(t, 404, `{"message":"Not Found"}`)
+	if res := h.do(fiber.MethodGet, "/api/assets/"+exif+"/thumbnail"+albKey, nil, "Cookie", cookie); res.Status != 200 ||
 		!strings.Contains(res.Header.Get(fiber.HeaderContentDisposition), exif+"_thumbnail") {
 		t.Errorf("thumbnail = %d %v", res.Status, res.Header)
 	}
-	h.do(fiber.MethodGet, "/api/albums/"+albumID+"/map-markers"+albKey, nil).expect(t, 200, `[]`)
+	h.do(fiber.MethodGet, "/api/albums/"+albumID+"/map-markers"+albKey, nil, "Cookie", cookie).expect(t, 200, `[]`)
 	h.do(fiber.MethodPost, "/api/search/metadata"+indKey, `{}`).
 		expect(t, 400, `{"message":"Shared link access is only allowed in combination with an albumIds filter"}`)
 
-	upload := func(key string, shade uint8) apiResponse {
+	upload := func(key string, shade uint8, headers ...string) apiResponse {
 		return h.multipart("/api/assets"+key, []part{
 			{field: "deviceAssetId", content: []byte("link")}, {field: "deviceId", content: []byte("browser")},
 			{field: "fileCreatedAt", content: []byte("2021-01-01T00:00:00Z")}, {field: "fileModifiedAt", content: []byte("2021-01-01T00:00:00Z")},
 			{field: "assetData", filename: "via-link.jpg", content: mutated(t, shade)},
-		})
+		}, headers...)
 	}
 	upload(indKey, 40).expect(t, 401, `{"message":"Unauthorized"}`)
-	if res := upload(albKey, 41); res.Status != 201 {
+	upload(albKey, 41).expect(t, 401, `{"message":"Password required"}`)
+	if res := upload(albKey, 41, "Cookie", cookie); res.Status != 201 {
 		t.Fatalf("upload through the album link = %d %s", res.Status, res.Body)
 	}
 	if got := h.do(fiber.MethodGet, "/api/albums/"+albumID, nil, owner...).object(t)["assetCount"]; got != float64(2) {
@@ -286,6 +289,154 @@ func TestSharedLinks(t *testing.T) {
 	h.do(fiber.MethodDelete, "/api/shared-links/"+ind.str(t, "id"), nil, owner...).expect(t, 204, "")
 	h.do(fiber.MethodGet, "/api/shared-links/me"+indKey, nil).expect(t, 401, `{"message":"Invalid share key"}`)
 	h.do(fiber.MethodGet, "/api/shared-links/"+ind.str(t, "id"), nil, owner...).expect(t, 400, `{"message":"Shared link not found"}`)
+}
+
+func TestSharedLinkPasswordOnEveryRoute(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	owner := bearer(admin)
+	exif := h.uploadID(admin, "korda-exif.jpg", fixture(t, testmedia.ExifJPEG), "2024-05-06T05:00:00.000Z", "2024-05-06T05:00:00.000Z")
+	h.runAllJobs()
+	albumID := h.do(fiber.MethodPost, "/api/albums", `{"albumName":"Guarded","assetIds":["`+exif+`"]}`, owner...).str(t, "id")
+	alb := h.do(fiber.MethodPost, "/api/shared-links", `{"type":"ALBUM","albumId":"`+albumID+`","password":"secret","slug":"guarded"}`, owner...)
+	ind := h.do(fiber.MethodPost, "/api/shared-links", `{"type":"INDIVIDUAL","assetIds":["`+exif+`"],"password":"secret"}`, owner...)
+	albCookie := "immich_shared_link_token=" + url.QueryEscape(linkToken(alb.str(t, "id"), "secret"))
+	indCookie := "immich_shared_link_token=" + url.QueryEscape(linkToken(ind.str(t, "id"), "secret"))
+
+	type route struct {
+		method string
+		path   string
+		body   any
+		status int
+	}
+	stream := "/api/assets/" + exif + "/video/stream/"
+	session := "00000000-0000-4000-8000-000000000000"
+	routes := []route{
+		{fiber.MethodGet, "/api/shared-links/me", nil, 200},
+		{fiber.MethodGet, "/api/assets/" + exif, nil, 200},
+		{fiber.MethodGet, "/api/assets/" + exif + "/thumbnail", nil, 200},
+		{fiber.MethodGet, "/api/assets/" + exif + "/original", nil, 200},
+		{fiber.MethodGet, "/api/assets/" + exif + "/video/playback", nil, 404},
+		{fiber.MethodGet, stream + "main.m3u8", nil, 400},
+		{fiber.MethodGet, stream + session + "/0/playlist.m3u8", nil, 404},
+		{fiber.MethodGet, stream + session + "/0/segment.ts", nil, 400},
+		{fiber.MethodDelete, stream + session, nil, 204},
+		{fiber.MethodPost, "/api/search/metadata", `{"albumIds":["` + albumID + `"]}`, 200},
+		{fiber.MethodGet, "/api/albums/" + albumID, nil, 200},
+		{fiber.MethodGet, "/api/albums/" + albumID + "/map-markers", nil, 200},
+		{fiber.MethodGet, "/api/timeline/buckets?albumId=" + albumID, nil, 200},
+		{fiber.MethodGet, "/api/timeline/bucket?albumId=" + albumID + "&timeBucket=2024-05-01T00:00:00.000Z", nil, 200},
+		{fiber.MethodPost, "/api/download/info", `{"albumId":"` + albumID + `"}`, 201},
+		{fiber.MethodPost, "/api/download/archive", `{"assetIds":["` + exif + `"]}`, 200},
+	}
+	with := func(path string, credential string) string {
+		if strings.Contains(path, "?") {
+			return path + "&" + credential
+		}
+		return path + "?" + credential
+	}
+	for _, credential := range []string{"key=" + alb.str(t, "key"), "slug=guarded"} {
+		for _, r := range routes {
+			path := with(r.path, credential)
+			h.do(r.method, path, r.body).expect(t, 401, `{"message":"Password required"}`)
+			h.do(r.method, path, r.body, "Cookie", indCookie).expect(t, 401, `{"message":"Password required"}`)
+			if res := h.do(r.method, path, r.body, "Cookie", albCookie); res.Status != r.status {
+				t.Errorf("%s %s with the token = %d %s, want %d", r.method, path, res.Status, res.Body, r.status)
+			}
+		}
+	}
+
+	indKey := "key=" + ind.str(t, "key")
+	for _, path := range []string{"/api/shared-links/me", "/api/assets/" + exif, "/api/assets/" + exif + "/original"} {
+		h.do(fiber.MethodGet, with(path, indKey), nil).expect(t, 401, `{"message":"Password required"}`)
+		if res := h.do(fiber.MethodGet, with(path, indKey), nil, "Cookie", indCookie); res.Status != 200 {
+			t.Errorf("%s with the token = %d %s", path, res.Status, res.Body)
+		}
+	}
+
+	upload := func(credential string, shade uint8, headers ...string) apiResponse {
+		return h.multipart(with("/api/assets", credential), []part{
+			{field: "deviceAssetId", content: []byte("link")}, {field: "deviceId", content: []byte("browser")},
+			{field: "fileCreatedAt", content: []byte("2021-01-01T00:00:00Z")}, {field: "fileModifiedAt", content: []byte("2021-01-01T00:00:00Z")},
+			{field: "assetData", filename: "via-link.jpg", content: mutated(t, shade)},
+		}, headers...)
+	}
+	upload("slug=guarded", 50).expect(t, 401, `{"message":"Password required"}`)
+	if res := upload("slug=guarded", 50, "Cookie", albCookie); res.Status != 201 {
+		t.Errorf("upload with the token = %d %s", res.Status, res.Body)
+	}
+
+	if res := h.do(fiber.MethodPost, with("/api/shared-links/login", "slug=guarded"), `{"password":"secret"}`); res.Status != 201 {
+		t.Errorf("login by slug = %d %s", res.Status, res.Body)
+	}
+	h.do(fiber.MethodPatch, "/api/shared-links/"+alb.str(t, "id"), `{"password":"changed"}`, owner...).expect(t, 200, "")
+	albKey := "key=" + alb.str(t, "key")
+	h.do(fiber.MethodGet, with("/api/assets/"+exif, albKey), nil, "Cookie", albCookie).expect(t, 401, `{"message":"Password required"}`)
+	both := albCookie + url.QueryEscape(","+linkToken(alb.str(t, "id"), "changed"))
+	if res := h.do(fiber.MethodGet, with("/api/assets/"+exif, albKey), nil, "Cookie", both); res.Status != 200 {
+		t.Errorf("asset with both tokens = %d %s", res.Status, res.Body)
+	}
+}
+
+func TestSharedLinkLoginRateLimit(t *testing.T) {
+	h := newHarnessWith(t, harnessOptions{rateLimitAuth: 2, publicUsers: true})
+	admin := h.admin()
+	owner := bearer(admin)
+	exif := h.uploadID(admin, "korda-exif.jpg", fixture(t, testmedia.ExifJPEG), "2024-05-06T05:00:00.000Z", "2024-05-06T05:00:00.000Z")
+	link := h.do(fiber.MethodPost, "/api/shared-links", `{"type":"INDIVIDUAL","assetIds":["`+exif+`"],"password":"secret"}`, owner...)
+	login := "/api/shared-links/login?key=" + link.str(t, "key")
+
+	for range 2 {
+		h.do(fiber.MethodPost, login, `{"password":"guess"}`).expect(t, 401, `{"message":"Invalid password"}`)
+	}
+	h.do(fiber.MethodPost, login, `{"password":"secret"}`).expect(t, 429, `{"message":"Too Many Requests"}`)
+	if res := h.do(fiber.MethodPost, "/api/auth/login", `{"email":"admin@example.com","password":"korda-admin"}`); res.Status != 201 {
+		t.Errorf("account login = %d %s", res.Status, res.Body)
+	}
+}
+
+func TestSharedLinkChecksumNeedsUploadAccess(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	owner := bearer(admin)
+	content := fixture(t, testmedia.ExifJPEG)
+	exif := h.uploadID(admin, "korda-exif.jpg", content, "2024-05-06T05:00:00.000Z", "2024-05-06T05:00:00.000Z")
+	albumID := h.do(fiber.MethodPost, "/api/albums", `{"albumName":"Uploads","assetIds":["`+exif+`"]}`, owner...).str(t, "id")
+	readOnly := h.do(fiber.MethodPost, "/api/shared-links", `{"type":"INDIVIDUAL","assetIds":["`+exif+`"],"allowUpload":false}`, owner...)
+	uploads := h.do(fiber.MethodPost, "/api/shared-links", `{"type":"ALBUM","albumId":"`+albumID+`"}`, owner...)
+
+	sum := sha1.Sum(content)
+	probe := func(key string) apiResponse {
+		return h.multipart("/api/assets?key="+key, []part{{field: "assetData", filename: "probe.jpg", content: content}},
+			"x-immich-checksum", base64.StdEncoding.EncodeToString(sum[:]))
+	}
+	probe(readOnly.str(t, "key")).expect(t, 400, `{"message":"Not found or no asset.upload access"}`)
+	probe(uploads.str(t, "key")).expect(t, 200, `{"status":"duplicate","id":"`+exif+`"}`)
+}
+
+func TestSharedLinkSearchHidesMetadata(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	owner := bearer(admin)
+	exif := h.uploadID(admin, "korda-exif.jpg", fixture(t, testmedia.ExifJPEG), "2024-05-06T05:00:00.000Z", "2024-05-06T05:00:00.000Z")
+	h.runAllJobs()
+	albumID := h.do(fiber.MethodPost, "/api/albums", `{"albumName":"Hidden","assetIds":["`+exif+`"]}`, owner...).str(t, "id")
+	hidden := h.do(fiber.MethodPost, "/api/shared-links", `{"type":"ALBUM","albumId":"`+albumID+`","showMetadata":false}`, owner...)
+	shown := h.do(fiber.MethodPost, "/api/shared-links", `{"type":"ALBUM","albumId":"`+albumID+`"}`, owner...)
+
+	search := func(key string) string {
+		res := h.do(fiber.MethodPost, "/api/search/metadata?key="+key, `{"albumIds":["`+albumID+`"],"withExif":true}`)
+		if res.Status != 200 {
+			t.Fatalf("search = %d %s", res.Status, res.Body)
+		}
+		return normalizeAsset(string(res.Body))
+	}
+	if got, want := search(hidden.str(t, "key")), `{"albums":{"total":0,"count":0,"items":[],"facets":[]},"assets":{"total":1,"count":1,"items":[{"id":"<uuid>","type":"IMAGE","originalMimeType":"image/jpeg","thumbhash":"<thumbhash>","localDateTime":"2024-05-06T07:08:09.123Z","duration":null,"livePhotoVideoId":null,"hasMetadata":false,"width":480,"height":640}],"facets":[],"nextPage":null,"nextCursor":null}}`; got != want {
+		t.Errorf("search without metadata = %s\n                   want %s", got, want)
+	}
+	if got := search(shown.str(t, "key")); !strings.Contains(got, `"exifInfo":{`) || !strings.Contains(got, `"originalFileName":"korda-exif.jpg"`) {
+		t.Errorf("search with metadata = %s", got)
+	}
 }
 
 func dated(t *testing.T, width int, date string) []byte {
