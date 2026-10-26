@@ -20,6 +20,7 @@ TEST_REDIS ?= 127.0.0.1:6379
 REFERENCE_URL ?= http://localhost:2283
 REFERENCE_EMAIL ?= admin@example.com
 REFERENCE_PASSWORD ?=
+REFERENCE_FOLDER ?=
 
 all: build
 
@@ -53,8 +54,8 @@ test-race: ## test with the race detector, without build tags and with all of th
 test\:redis: ## test with the race detector, including the jobs test against the Redis in TEST_REDIS
 	KORDA_TEST_REDIS="$(TEST_REDIS)" go test -race -count=1 ./...
 
-test\:conformance: ## diff korda built with TAGS against the Immich in REFERENCE_URL (REFERENCE_EMAIL, REFERENCE_PASSWORD)
-	KORDA_REFERENCE_URL="$(REFERENCE_URL)" KORDA_REFERENCE_EMAIL="$(REFERENCE_EMAIL)" KORDA_REFERENCE_PASSWORD="$(REFERENCE_PASSWORD)" go test -tags "$(TAGS)" -count=1 -run '^TestConformance' -v .
+test\:conformance: ## diff korda built with TAGS against the Immich in REFERENCE_URL (REFERENCE_EMAIL, REFERENCE_PASSWORD, REFERENCE_FOLDER)
+	KORDA_REFERENCE_URL="$(REFERENCE_URL)" KORDA_REFERENCE_EMAIL="$(REFERENCE_EMAIL)" KORDA_REFERENCE_PASSWORD="$(REFERENCE_PASSWORD)" KORDA_REFERENCE_FOLDER="$(REFERENCE_FOLDER)" go test -tags "$(TAGS)" -count=1 -run '^TestConformance' -v .
 
 vulncheck: ## govulncheck
 	go run $(GOVULNCHECK) ./...

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -233,6 +234,11 @@ func (e Entry) Rational(i int) (num int64, den int64, ok bool) {
 	return 0, 0, false
 }
 
+func Quotient(num int64, den int64) float64 {
+	v, _ := strconv.ParseFloat(strconv.FormatFloat(float64(num)/float64(den), 'g', 10, 64), 64)
+	return v
+}
+
 func (e Entry) Float(i int) (float64, bool) {
 	switch e.Type {
 	case typeRational, typeSRational:
@@ -240,7 +246,7 @@ func (e Entry) Float(i int) (float64, bool) {
 		if !ok || den == 0 {
 			return 0, false
 		}
-		return float64(num) / float64(den), true
+		return Quotient(num, den), true
 	case typeFloat:
 		if 4*i+4 <= len(e.Data) {
 			return float64(math.Float32frombits(e.order.Uint32(e.Data[4*i:]))), true

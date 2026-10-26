@@ -145,7 +145,7 @@ func degrees(e exif.Entry) (float64, bool) {
 		if den == 0 {
 			continue
 		}
-		total += float64(num) / float64(den) / div
+		total += exif.Quotient(num, den) / div
 	}
 
 	return total, true
@@ -325,7 +325,7 @@ func lensSpec(e exif.Entry) string {
 			values = append(values, 0)
 			continue
 		}
-		values = append(values, float64(num)/float64(den))
+		values = append(values, exif.Quotient(num, den))
 	}
 	if len(values) < 4 || values[0] == 0 {
 		return ""
@@ -630,6 +630,9 @@ func Read(ctx context.Context, path string, ffprobe string, kind string) (*Tags,
 		default:
 			return nil, err
 		}
+	}
+	if t.IsVideo {
+		setString(&t.LensModel, probe.VideoKeys(f, st.Size())["com.apple.quicktime.camera.lens_model"])
 	}
 	if !probed && mimetypes.IsPossiblyAnimated(path) {
 		if secs, ok := animationSeconds(f, st.Size(), info); ok {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
 	"io/fs"
@@ -340,6 +341,34 @@ func TestGPSZone(t *testing.T) {
 		if got[key] != value {
 			t.Errorf("%s = %v, want %v", key, got[key], value)
 		}
+	}
+}
+
+func TestExifValuesMatchExiftool(t *testing.T) {
+	h := newHarness(t)
+	token := h.admin()
+
+	tiff := testmedia.Tags{
+		Make: "korda", Model: "Rational", Orientation: 1, FocalLength: [2]uint32{12499026, 2097152},
+		DateTimeOriginal: "2024:05:06 07:08:09",
+	}.TIFF()
+	zero := bytes.Replace(tiff, []byte{0x12, 0x01, 3, 0, 1, 0, 0, 0, 1, 0}, []byte{0x12, 0x01, 3, 0, 1, 0, 0, 0, 0, 0}, 1)
+	if bytes.Equal(zero, tiff) {
+		t.Fatal("orientation entry not found")
+	}
+	content, err := testmedia.JPEG(testmedia.Pattern(64, 48), zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := h.uploadID(token, "korda-rational.jpg", content, "2024-05-06T05:00:00.000Z", "2024-05-06T05:00:00.000Z")
+	h.runAllJobs()
+
+	exifInfo := h.do(fiber.MethodGet, "/api/assets/"+id, nil, bearer(token)...).object(t)["exifInfo"].(map[string]any)
+	if exifInfo["focalLength"] != 5.960000038 {
+		t.Errorf("focalLength = %v, want 5.960000038", exifInfo["focalLength"])
+	}
+	if exifInfo["orientation"] != "0" {
+		t.Errorf("orientation = %v, want \"0\"", exifInfo["orientation"])
 	}
 }
 

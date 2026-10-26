@@ -295,7 +295,7 @@ func Extract(ctx context.Context, rt *runtime.Runtime, p jobs.AssetPayload) erro
 
 func writeExif(ctx context.Context, rt *runtime.Runtime, a *asset.Asset, tags *metadata.Tags, dates Dates, size int64, modified time.Time, at time.Time) error {
 	var orientation any
-	if tags.Orientation != nil && *tags.Orientation > 0 {
+	if tags.Orientation != nil {
 		orientation = strconv.Itoa(*tags.Orientation)
 	}
 	var latitude, longitude any
