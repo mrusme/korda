@@ -235,7 +235,10 @@ func prepare(rt *runtime.Runtime, queue jobs.Enqueuer) (err error) {
 	}
 	if ff := media.DetectFFmpeg(context.Background(), mediacfg.FFmpeg); ff != nil {
 		med.SetFFmpeg(ff)
-		rt.Info("media", "ffmpeg", "path", ff.Path, "encoder", ff.Encoder, "tone mapping", ff.ToneMap)
+		rt.Info("media", "ffmpeg", "path", ff.Path, "encoder", ff.Encoder, "hevc", ff.HEVC, "tone mapping", ff.ToneMap)
+		if !ff.HEVC {
+			rt.Warn("media", "ffmpeg", "no HEVC decoder", "HEVC videos, such as those of iPhones, get no thumbnails and are not transcoded")
+		}
 	} else {
 		rt.Warn("media", "ffmpeg", "not available", "videos get no thumbnails and are not transcoded")
 	}

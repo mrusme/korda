@@ -2,12 +2,14 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"tty.fail/mrus/korda/errs"
@@ -80,5 +82,44 @@ func TestThumbnailRejectsWhatItCannotDecode(t *testing.T) {
 	err := m.Thumbnail(bytes.NewReader([]byte("not an image")), "profile/u/x.jpg")
 	if !errors.Is(err, errs.ErrImageUndecodable) {
 		t.Errorf("Thumbnail of text = %v, want %v", err, errs.ErrImageUndecodable)
+	}
+}
+
+func fakeFFmpeg(t *testing.T, decoders string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "ffmpeg")
+	script := "#!/bin/sh\ncase \"$2\" in\n" +
+		"-encoders) printf ' V....D libx264              libx264 H.264\\n' ;;\n" +
+		"-decoders) printf '%s' '" + decoders + "' ;;\n" +
+		"-filters) printf ' ... zscale            V->V       Apply resizing\\n ... tonemap           V->V       Conversion\\n' ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	return path
+}
+
+func TestDetectFFmpegHEVC(t *testing.T) {
+	cases := []struct {
+		name     string
+		decoders string
+		want     bool
+	}{
+		{"software decoder", " VFS..D hevc                 HEVC (High Efficiency Video Coding)\n V....D h264                 H.264\n", true},
+		{"hardware decoders only", " V....D hevc_qsv             HEVC video (Intel Quick Sync Video acceleration) (codec hevc)\n V..... hevc_v4l2m2m         V4L2 mem2mem HEVC decoder wrapper (codec hevc)\n", false},
+		{"no decoder", " VFS..D h264                 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := DetectFFmpeg(context.Background(), fakeFFmpeg(t, c.decoders))
+			if f == nil {
+				t.Fatal("DetectFFmpeg = nil")
+			}
+			if f.HEVC != c.want || f.Encoder != EncoderX264 || !f.ToneMap {
+				t.Errorf("DetectFFmpeg = HEVC %t, encoder %q, tone mapping %t, want HEVC %t", f.HEVC, f.Encoder, f.ToneMap, c.want)
+			}
+		})
 	}
 }

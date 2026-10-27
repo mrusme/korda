@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,7 +17,10 @@ import (
 	"tty.fail/mrus/korda/services/metadata/video"
 )
 
-var ErrNoFFmpeg = errors.New("ffmpeg is not available")
+var (
+	ErrNoFFmpeg = errors.New("ffmpeg is not available")
+	hevcDecoder = regexp.MustCompile(`(?m)^\s*\S{6}\s+hevc\s`)
+)
 
 const (
 	EncoderX264     = "libx264"
@@ -29,6 +33,7 @@ const (
 type FFmpeg struct {
 	Path    string
 	Encoder string
+	HEVC    bool
 	ToneMap bool
 }
 
@@ -58,6 +63,7 @@ func DetectFFmpeg(ctx context.Context, path string) *FFmpeg {
 		f.Encoder = EncoderOpenH264
 	}
 
+	f.HEVC = hevcDecoder.MatchString(run("-decoders"))
 	filters := run("-filters")
 	f.ToneMap = strings.Contains(filters, " zscale ") && strings.Contains(filters, " tonemap ")
 
