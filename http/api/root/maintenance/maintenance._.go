@@ -5,6 +5,7 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -90,8 +91,14 @@ type report struct {
 	Items []struct{} `json:"items"`
 }
 
+type backup struct {
+	Filename string `json:"filename"`
+	Filesize int64  `json:"filesize"`
+	Timezone string `json:"timezone"`
+}
+
 type backups struct {
-	Backups []struct{} `json:"backups"`
+	Backups []backup `json:"backups"`
 }
 
 func admin(p permission.Permission) logicauth.Requirement {
@@ -223,7 +230,16 @@ func (r *Route) ListDatabaseBackups(c fiber.Ctx) error {
 		return err
 	}
 
-	return req.Respond(fiber.StatusOK, backups{Backups: []struct{}{}})
+	list, err := logicmaintenance.ListBackups(r.Runtime)
+	if err != nil {
+		return err
+	}
+	out := backups{Backups: make([]backup, 0, len(list))}
+	for _, b := range list {
+		out.Backups = append(out.Backups, backup{Filename: b.Filename, Filesize: b.Filesize, Timezone: b.Timezone})
+	}
+
+	return req.Respond(fiber.StatusOK, out)
 }
 
 func (r *Route) DownloadDatabaseBackup(c fiber.Ctx) error {
@@ -236,8 +252,16 @@ func (r *Route) DownloadDatabaseBackup(c fiber.Ctx) error {
 	if err := req.Params(&p, "filename"); err != nil {
 		return err
 	}
+	path, err := logicmaintenance.BackupPath(r.Runtime, p.Filename)
+	if err != nil {
+		return errs.ErrNotFound
+	}
+	contentType := "application/sql"
+	if strings.HasSuffix(p.Filename, ".gz") {
+		contentType = "application/gzip"
+	}
 
-	return errs.ErrNotFound
+	return req.SendMediaWith(path, contentType, p.Filename, request.CacheUncached)
 }
 
 func (r *Route) DeleteDatabaseBackup(c fiber.Ctx) error {
@@ -251,7 +275,11 @@ func (r *Route) DeleteDatabaseBackup(c fiber.Ctx) error {
 		return err
 	}
 
-	return logicmaintenance.DeleteBackups(&in)
+	if err := logicmaintenance.DeleteBackups(r.Runtime, &in); err != nil {
+		return err
+	}
+
+	return req.Empty(fiber.StatusOK)
 }
 
 func (r *Route) StartDatabaseRestoreFlow(c fiber.Ctx) error {
@@ -260,7 +288,7 @@ func (r *Route) StartDatabaseRestoreFlow(c fiber.Ctx) error {
 		return err
 	}
 
-	return errs.UnsupportedBackups
+	return errs.UnsupportedRestore
 }
 
 func (r *Route) UploadDatabaseBackup(c fiber.Ctx) error {
@@ -269,13 +297,16 @@ func (r *Route) UploadDatabaseBackup(c fiber.Ctx) error {
 		return err
 	}
 
-	var name string
 	err := req.File("file", func(filename string) error {
-		name = filename
 		return nil
-	}, func(filename string, r io.Reader) error {
-		_, err := io.Copy(io.Discard, r)
-		return err
+	}, func(filename string, src io.Reader) error {
+		if !logicmaintenance.ValidBackupName(filepath.Base(filename)) {
+			if _, err := io.Copy(io.Discard, src); err != nil {
+				return err
+			}
+			return errs.ErrInvalidBackupName
+		}
+		return logicmaintenance.UploadBackup(r.Runtime, filename, src)
 	})
 	if errors.Is(err, request.ErrNoFile) {
 		return errs.ErrInternal
@@ -283,11 +314,8 @@ func (r *Route) UploadDatabaseBackup(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if !logicmaintenance.ValidBackupName(filepath.Base(name)) {
-		return errs.ErrInvalidBackupName
-	}
 
-	return errs.UnsupportedBackups
+	return req.Empty(fiber.StatusCreated)
 }
 
 func validUUID(s string) bool {

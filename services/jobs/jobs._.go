@@ -40,6 +40,7 @@ const (
 	MemoryCleanup   asyncjob.JobType = "memory-cleanup"
 	MemoryGenerate  asyncjob.JobType = "memory-generate"
 	TagCleanup      asyncjob.JobType = "tag-cleanup"
+	BackupDatabase  asyncjob.JobType = "backup-database"
 
 	registerQueue asyncjob.JobType = "register-queue"
 )
@@ -51,6 +52,7 @@ const (
 	QueueBackground    = "backgroundTask"
 	QueueEditor        = "editor"
 	QueueNotifications = "notifications"
+	QueueBackup        = "backupDatabase"
 )
 
 var queueOf = map[asyncjob.JobType]string{
@@ -70,6 +72,7 @@ var queueOf = map[asyncjob.JobType]string{
 	MemoryCleanup:     QueueBackground,
 	MemoryGenerate:    QueueBackground,
 	TagCleanup:        QueueBackground,
+	BackupDatabase:    QueueBackup,
 }
 
 var nameOf = map[asyncjob.JobType]string{
@@ -89,6 +92,7 @@ var nameOf = map[asyncjob.JobType]string{
 	MemoryCleanup:     "MemoryCleanup",
 	MemoryGenerate:    "MemoryGenerate",
 	TagCleanup:        "TagCleanup",
+	BackupDatabase:    "DatabaseBackup",
 }
 
 const AlbumUpdateDelay = 5 * time.Minute
@@ -455,6 +459,10 @@ func (j *Jobs) All(jobType asyncjob.JobType, force *bool) error {
 
 func (j *Jobs) Manual(jobType asyncjob.JobType) error {
 	return j.enqueue(jobType, uuid.Must(uuid.NewV7()).String(), ManualPayload{})
+}
+
+func (j *Jobs) Backup() error {
+	return j.enqueue(BackupDatabase, uuid.Must(uuid.NewV7()).String(), ManualPayload{}, asynq.MaxRetry(0))
 }
 
 func (j *Jobs) Stats(queue string) (Stats, error) {

@@ -112,13 +112,3 @@ func DetectInstall(rt *runtime.Runtime) []Folder {
 
 	return out
 }
-
-func DeleteBackups(in *DeleteBackupsInput) error {
-	for _, name := range in.Backups {
-		if !ValidBackupName(name) {
-			return errs.ErrInvalidBackupName
-		}
-	}
-
-	return errs.UnsupportedBackups
-}

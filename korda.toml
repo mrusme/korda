@@ -52,3 +52,10 @@ LoginPageMessage = ""
 PublicUsers      = true
 TrashDays        = 30
 UserDeleteDelay  = 7
+
+# Nightly copy of the database into backups/ in the media folder, see the
+# README. CronExpression is in the server's local time.
+[Backup]
+Enabled        = true
+CronExpression = "0 02 * * *"
+KeepLastAmount = 14

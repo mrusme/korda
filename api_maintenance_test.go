@@ -55,11 +55,12 @@ func TestMaintenance(t *testing.T) {
 	h.do(fiber.MethodDelete, "/api/admin/database-backups", `{"backups":["x.sql","x.txt"]}`, owner...).
 		expect(t, 400, `{"message":"Invalid backup name!"}`)
 	h.do(fiber.MethodDelete, "/api/admin/database-backups", `{"backups":["x.sql"]}`, owner...).
-		expect(t, 400, `{"message":"Database backups are not supported by korda"}`)
+		expect(t, 200, "")
 	h.multipart("/api/admin/database-backups/upload", []part{{field: "file", filename: "x.txt", content: []byte("x")}}, owner...).
 		expect(t, 400, `{"message":"Invalid backup name!"}`)
 	h.multipart("/api/admin/database-backups/upload", []part{{field: "file", filename: "../x.sql", content: []byte("x")}}, owner...).
-		expect(t, 400, `{"message":"Database backups are not supported by korda"}`)
+		expect(t, 201, "")
+	h.do(fiber.MethodGet, "/api/admin/database-backups/uploaded-x.sql", nil, owner...).expect(t, 200, "x")
 	h.multipart("/api/admin/database-backups/upload", []part{{field: "name", content: []byte("x")}}, owner...).
 		expect(t, 500, `{"message":"Failed to upload database backup"}`)
 	h.do(fiber.MethodPost, "/api/admin/database-backups/start-restore", nil).

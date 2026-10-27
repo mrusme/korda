@@ -1,8 +1,12 @@
 package helpers
 
 import (
+	"errors"
+
 	"xn--gckvb8fzb.com/glides/services/config"
 )
+
+var ErrBackupKeep = errors.New("Backup.KeepLastAmount must be at least 1")
 
 const (
 	WebDefaultBindIP         string = "0.0.0.0"
@@ -23,6 +27,8 @@ const (
 	MediaDefaultResolution   string = "720"
 	ServerDefaultTrashDays   int    = 30
 	ServerDefaultDeleteDelay int    = 7
+	BackupDefaultCron        string = "0 02 * * *"
+	BackupDefaultKeep        int    = 14
 )
 
 type WebConfig struct {
@@ -96,6 +102,32 @@ func NewMediaConfig() MediaConfig {
 		Transcode:        MediaDefaultTranscode,
 		TargetResolution: MediaDefaultResolution,
 	}
+}
+
+type BackupConfig struct {
+	Enabled        bool   `koanf:"Enabled"`
+	CronExpression string `koanf:"CronExpression"`
+	KeepLastAmount int    `koanf:"KeepLastAmount"`
+}
+
+func NewBackupConfig() BackupConfig {
+	return BackupConfig{
+		Enabled:        true,
+		CronExpression: BackupDefaultCron,
+		KeepLastAmount: BackupDefaultKeep,
+	}
+}
+
+func BackupConfigFrom(cfg *config.Config) (backup BackupConfig, err error) {
+	backup = NewBackupConfig()
+	if err = cfg.Unmarshal("Backup", &backup); err != nil {
+		return NewBackupConfig(), err
+	}
+	if backup.KeepLastAmount < 1 {
+		return NewBackupConfig(), ErrBackupKeep
+	}
+
+	return backup, nil
 }
 
 func NewServerConfig() ServerConfig {

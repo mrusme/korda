@@ -21,7 +21,7 @@ func TestConfigRoutes(t *testing.T) {
 		t.Fatalf("admin config = %d %s, legacy %s", cfg.Status, cfg.Body, legacy.Body)
 	}
 	for _, want := range []string{
-		`{"backup":{"database":{"enabled":false,"cronExpression":"0 02 * * *","keepLastAmount":14}},"ffmpeg":{"crf":23,`,
+		`{"backup":{"database":{"enabled":true,"cronExpression":"0 02 * * *","keepLastAmount":14}},"ffmpeg":{"crf":23,`,
 		`"transcode":"required","accel":"disabled","accelDecode":true,"tonemap":"hable","realtime":{"enabled":false`,
 		`"job":{"thumbnailGeneration":{"concurrency":1},"metadataExtraction":{"concurrency":1},"videoConversion":{"concurrency":1},"faceDetection":{"concurrency":2}`,
 		`"machineLearning":{"enabled":false,"urls":["http://immich-machine-learning:3003"]`,

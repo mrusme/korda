@@ -17,6 +17,7 @@ import (
 	"tty.fail/mrus/korda/http/web"
 	logicadminusers "tty.fail/mrus/korda/logic/root/admin/users"
 	logicassets "tty.fail/mrus/korda/logic/root/assets"
+	logicmaintenance "tty.fail/mrus/korda/logic/root/maintenance"
 	logicmemories "tty.fail/mrus/korda/logic/root/memories"
 	logicserver "tty.fail/mrus/korda/logic/root/server"
 	logicsessions "tty.fail/mrus/korda/logic/root/sessions"
@@ -59,6 +60,7 @@ const (
 	memoryCleanupID     = "memory-cleanup"
 	memoryGenerateID    = "memory-generate"
 	auditCleanupID      = "audit-table-cleanup"
+	backupDatabaseID    = "backup-database"
 	adminStorageLabel   = "admin"
 )
 
@@ -68,6 +70,7 @@ var (
 	flagReset      string
 	flagCreateUser string
 	flagMigrate    bool
+	flagRestore    string
 )
 
 func init() {
@@ -76,6 +79,7 @@ func init() {
 	flag.StringVar(&flagReset, "reset", "", "Clear the whole database and exit (requires the current time as HH:MM (24h) confirmation, e.g. --reset 10:42)")
 	flag.StringVar(&flagCreateUser, "create-user", "", `Create a user from a JSON object and exit, e.g. --create-user '{"email":"admin@example.com","name":"Admin","password":"mypassword","admin":true}'`)
 	flag.BoolVar(&flagMigrate, "migrate", false, "Run the database migrations and exit")
+	flag.StringVar(&flagRestore, "restore", "", "Replace the database with a backup file and exit, while korda is stopped, e.g. --restore korda-db-backup-20261027T020000-v0.1.0-sqlite3.53.4.sql.gz")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Use: %s [-opts]\n\n", os.Args[0])
 		flag.PrintDefaults()
@@ -116,6 +120,14 @@ func main() {
 
 	if flagMigrate {
 		if err = migrate(rt); err != nil {
+			fmt.Printf("%s\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if flagRestore != "" {
+		if err = restore(rt, flagRestore); err != nil {
 			fmt.Printf("%s\n", err)
 			os.Exit(1)
 		}
@@ -321,9 +333,50 @@ func registerCronFunctions(rt *runtime.Runtime) (err error) {
 		return err
 	}
 
-	return crn.Register(auditCleanupID, nightlySpec, func(ctx context.Context) error {
+	if err = crn.Register(auditCleanupID, nightlySpec, func(ctx context.Context) error {
 		return logicsync.CleanupAudit(ctx, rt)
-	})
+	}); err != nil {
+		return err
+	}
+
+	backupcfg, err := gh.BackupConfigFrom(rt.Config())
+	if err != nil || !backupcfg.Enabled {
+		return err
+	}
+	if err = crn.Register(backupDatabaseID, backupcfg.CronExpression, func(ctx context.Context) error {
+		return gh.Jobs(rt).Backup()
+	}); err != nil {
+		return fmt.Errorf("Backup.CronExpression: %w", err)
+	}
+
+	return nil
+}
+
+func restore(rt *runtime.Runtime, file string) error {
+	mediacfg, err := gh.MediaConfigFrom(rt.Config())
+	if err != nil {
+		return err
+	}
+	root, err := mediaroot.New(mediacfg.Location)
+	if err != nil {
+		return err
+	}
+	backups, err := root.Abs(string(mediaroot.Backups))
+	if err != nil {
+		return err
+	}
+
+	restored, err := logicmaintenance.Restore(context.Background(), rt.Config().DatabasePath(), backups, file, time.Now())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Restored %s into %s, at migration %d\n", restored.Source, restored.Database, restored.Version)
+	fmt.Printf("Ended %d sessions, every app has to sign in again\n", restored.Sessions)
+	if restored.Previous != "" {
+		fmt.Printf("The previous database is %s\n", restored.Previous)
+	}
+
+	return nil
 }
 
 func migrate(rt *runtime.Runtime) error {

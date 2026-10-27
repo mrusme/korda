@@ -8,6 +8,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	logicadminusers "tty.fail/mrus/korda/logic/root/admin/users"
 	logicassets "tty.fail/mrus/korda/logic/root/assets"
+	logicmaintenance "tty.fail/mrus/korda/logic/root/maintenance"
 	logicmemories "tty.fail/mrus/korda/logic/root/memories"
 	logicnotifications "tty.fail/mrus/korda/logic/root/notifications"
 	logictags "tty.fail/mrus/korda/logic/root/tags"
@@ -114,6 +115,7 @@ func Install(rt *runtime.Runtime, h *handler.Handlers) {
 		jobs.MemoryCleanup:   logicmemories.Cleanup,
 		jobs.MemoryGenerate:  logicmemories.Generate,
 		jobs.TagCleanup:      logictags.Cleanup,
+		jobs.BackupDatabase:  logicmaintenance.RunBackup,
 	}
 	for jobType, run := range manual {
 		h.Handle(jobType, jobs.Run, each(func(ctx context.Context, _ jobs.ManualPayload) error {

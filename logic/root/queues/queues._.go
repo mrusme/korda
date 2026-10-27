@@ -166,7 +166,7 @@ func start(rt *runtime.Runtime, name queue.Name, force *bool) error {
 	case sweeps[name] != "":
 		return gh.Jobs(rt).All(sweeps[name], force)
 	case name == queue.BackupDatabase:
-		return errs.UnsupportedBackups
+		return gh.Jobs(rt).Backup()
 	case slices.Contains(idle, name):
 		return nil
 	}
@@ -181,7 +181,7 @@ func CreateJob(rt *runtime.Runtime, in *CreateJobInput) error {
 	case in.Name == queue.ManualPersonCleanup:
 		return nil
 	case in.Name == queue.ManualBackupDatabase:
-		return errs.UnsupportedBackups
+		return gh.Jobs(rt).Backup()
 	}
 
 	return errs.UnsupportedIntegrity

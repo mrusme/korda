@@ -158,7 +158,7 @@ func (u Unsupported) Error() string {
 }
 
 const (
-	UnsupportedBackups     Unsupported = "Database backups are not supported by korda"
+	UnsupportedRestore     Unsupported = "Database restores through the API are not supported by korda"
 	UnsupportedIntegrity   Unsupported = "Integrity reports are not supported by korda"
 	UnsupportedLibraries   Unsupported = "External libraries are not supported by korda"
 	UnsupportedPeople      Unsupported = "People and faces are not supported by korda"
@@ -186,4 +186,13 @@ var (
 	ErrServiceMissing    = errors.New("err_service_missing")
 	ErrCreateUserInvalid = errors.New("err_create_user_invalid")
 	ErrJobsTargetMissing = errors.New("err_jobs_target_missing")
+)
+
+var (
+	ErrRestoreNotSQLite = errors.New("the backup is not a SQLite database, an Immich backup can't be restored into korda")
+	ErrRestoreCorrupt   = errors.New("the backup failed SQLite's integrity check")
+	ErrRestoreNotKorda  = errors.New("the backup is not a korda database")
+	ErrRestoreDirty     = errors.New("the backup was taken during a failed migration")
+	ErrRestoreNewer     = errors.New("the backup is from a newer korda")
+	ErrRestoreInUse     = errors.New("the database is in use, stop korda before a restore")
 )

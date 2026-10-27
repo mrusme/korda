@@ -76,8 +76,10 @@ func base() (*Config, error) {
 	return cfg, dec.Decode(cfg)
 }
 
-func apply(cfg *Config, media gh.MediaConfig, server gh.ServerConfig, level string) {
-	cfg.Backup.Database.Enabled = false
+func apply(cfg *Config, media gh.MediaConfig, server gh.ServerConfig, backup gh.BackupConfig, level string) {
+	cfg.Backup.Database.Enabled = backup.Enabled
+	cfg.Backup.Database.CronExpression = backup.CronExpression
+	cfg.Backup.Database.KeepLastAmount = int64(backup.KeepLastAmount)
 
 	cfg.FFmpeg.Transcode = TranscodePolicy(media.Transcode)
 	cfg.FFmpeg.TargetResolution = media.TargetResolution
@@ -137,8 +139,12 @@ func Effective(rt *runtime.Runtime) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	backup, err := gh.BackupConfigFrom(rt.Config())
+	if err != nil {
+		return nil, err
+	}
 
-	apply(cfg, media, server, rt.Config().LoggingLevel())
+	apply(cfg, media, server, backup, rt.Config().LoggingLevel())
 
 	return cfg, nil
 }
@@ -149,7 +155,7 @@ func Defaults() (*Config, error) {
 		return nil, err
 	}
 
-	apply(cfg, gh.NewMediaConfig(), gh.NewServerConfig(), "info")
+	apply(cfg, gh.NewMediaConfig(), gh.NewServerConfig(), gh.NewBackupConfig(), "info")
 
 	return cfg, nil
 }

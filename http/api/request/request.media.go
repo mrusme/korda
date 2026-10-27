@@ -16,7 +16,10 @@ import (
 	"tty.fail/mrus/korda/errs"
 )
 
-const CachePrivate = "private, max-age=86400, no-transform, stale-while-revalidate=2592000, stale-if-error=2592000"
+const (
+	CachePrivate  = "private, max-age=86400, no-transform, stale-while-revalidate=2592000, stale-if-error=2592000"
+	CacheUncached = "private, no-cache, no-transform"
+)
 
 type fileBody struct {
 	*io.SectionReader
@@ -122,6 +125,10 @@ func parseRange(header string, size int64) (start int64, end int64, ok bool, sat
 }
 
 func (req *Request) SendMedia(abs string, contentType string, fileName string) error {
+	return req.SendMediaWith(abs, contentType, fileName, CachePrivate)
+}
+
+func (req *Request) SendMediaWith(abs string, contentType string, fileName string, cacheControl string) error {
 	f, err := os.Open(abs)
 	if err != nil {
 		return errs.ErrNotFound
@@ -138,7 +145,7 @@ func (req *Request) SendMedia(abs string, contentType string, fileName string) e
 	etag := ETag(size, modified)
 
 	c := req.c
-	c.Set(fiber.HeaderCacheControl, CachePrivate)
+	c.Set(fiber.HeaderCacheControl, cacheControl)
 	c.Set(fiber.HeaderContentType, contentType)
 	if fileName != "" {
 		c.Set(fiber.HeaderContentDisposition, "inline; filename*=UTF-8''"+encodeURIComponent(fileName))

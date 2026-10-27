@@ -88,8 +88,6 @@ func TestQueueRoutes(t *testing.T) {
 	h.do(fiber.MethodPost, "/api/jobs", `{}`, owner...).expect(t, 400, enumIssue(`"name"`, queue.ManualJob("").Enum()))
 	h.do(fiber.MethodPost, "/api/jobs", `{"name":"TagCleanup"}`, owner...).expect(t, 400, enumIssue(`"name"`, queue.ManualJob("").Enum()))
 	h.do(fiber.MethodPost, "/api/jobs", `{"name":"nope"}`, member...).expect(t, 403, `{"message":"Forbidden"}`)
-	h.do(fiber.MethodPost, "/api/jobs", `{"name":"backup-database"}`, owner...).
-		expect(t, 400, `{"message":"Database backups are not supported by korda"}`)
 	h.do(fiber.MethodPost, "/api/jobs", `{"name":"integrity-missing-files"}`, owner...).
 		expect(t, 400, `{"message":"Integrity reports are not supported by korda"}`)
 	h.do(fiber.MethodPost, "/api/jobs", `{"name":"person-cleanup"}`, owner...).expect(t, 204, "")
@@ -104,8 +102,6 @@ func TestQueueRoutes(t *testing.T) {
 		expect(t, 400, `{"message":"Validation failed","errors":[{"expected":"boolean","code":"invalid_type","path":["force"],"message":"Invalid input: expected boolean, received string"}]}`)
 	h.do(fiber.MethodPut, "/api/jobs/notifications", `{"command":"start"}`, owner...).
 		expect(t, 400, `{"message":"Invalid job name: notifications"}`)
-	h.do(fiber.MethodPut, "/api/jobs/backupDatabase", `{"command":"start"}`, owner...).
-		expect(t, 400, `{"message":"Database backups are not supported by korda"}`)
 	h.do(fiber.MethodPut, "/api/jobs/smartSearch", `{"command":"start"}`, owner...).
 		expect(t, 200, `{"queueStatus":{"isPaused":false,"isActive":false},"jobCounts":{"active":0,"completed":0,"failed":0,"delayed":0,"waiting":0,"paused":0}}`)
 	if ids := h.queue.ids(); len(ids) != 0 {
