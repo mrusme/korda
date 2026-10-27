@@ -1,0 +1,69 @@
+version: 2
+
+project_name: korda
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.Version={{ .Tag }}
+      - -X main.Commit={{ .FullCommit }}
+      - -X main.Date={{ .CommitDate }}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    targets:
+      - android_arm64
+      - darwin_amd64
+      - darwin_arm64
+      - freebsd_amd64
+      - freebsd_arm64
+      - linux_amd64
+      - linux_arm64
+      - linux_loong64
+      - linux_ppc64le
+      - linux_riscv64
+      - linux_s390x
+      - netbsd_amd64
+      - openbsd_amd64
+      - openbsd_arm64
+      - windows_amd64
+      - windows_arm64
+    hooks:
+      post:
+        - cmd: sh -c 'm="$(go version -m "$0")" && ! echo "$m" | grep -E "gen2brain/h265|ringsaturn/tzf|-tags="' '{{ .Path }}'
+          output: true
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+release:
+  prerelease: auto
+
+changelog:
+  use: git
+  abbrev: 7
+  filters:
+    exclude:
+      - '^Merge '

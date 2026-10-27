@@ -37,6 +37,12 @@ independent web interface that is more lightweight, snappy and works
   transcode jobs of these videos fail. Korda logs a warning at startup when its
   `ffmpeg` has no HEVC decoder.
 
+## Releases
+
+You can find binary releases [here](https://github.com/mrusme/korda/releases),
+however, the releases are built without [HEIC and TZF](#build-tags). If you want
+these features you will have to [build Korda yourself](#building).
+
 ## Building
 
 ```sh

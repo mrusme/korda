@@ -1,4 +1,5 @@
 /_internal/**
 /build/
+/dist/
 /media/
 /korda.db*
