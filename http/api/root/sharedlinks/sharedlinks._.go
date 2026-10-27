@@ -87,7 +87,7 @@ func (r *Route) SharedLinkLogin(c fiber.Ctx) error {
 		return err
 	}
 
-	d, token, err := logicsharedlinks.Login(req.Context(), r.Runtime, req.Auth, &in)
+	d, token, err := logicsharedlinks.Login(req.Context(), r.Runtime, req.Auth, &in, c.IP())
 	if err != nil {
 		return err
 	}

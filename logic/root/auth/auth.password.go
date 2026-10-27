@@ -9,6 +9,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/helpers/optional"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/user"
 	repouser "tty.fail/mrus/korda/services/repositories/user"
 	"xn--gckvb8fzb.com/glides/helpers/password"
@@ -58,8 +59,12 @@ func ChangePassword(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *
 	if a.Session != nil {
 		except = uuid.NullUUID{UUID: a.Session.ID, Valid: true}
 	}
-	if err = repos.Session.DeleteAllOfUser(ctx, u.ID, except); err != nil {
+	ids, err := repos.Session.DeleteAllOfUser(ctx, u.ID, except)
+	if err != nil {
 		return nil, err
+	}
+	if len(ids) > 0 {
+		gh.Emit(ctx, rt, event.SessionsRevoked{SessionIDs: ids})
 	}
 
 	return updated, nil

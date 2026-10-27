@@ -2,7 +2,9 @@ package web
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -11,6 +13,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/http/api"
 	"tty.fail/mrus/korda/http/helpers/compress"
+	"tty.fail/mrus/korda/http/helpers/requestlog"
 	"tty.fail/mrus/korda/http/socket"
 	"tty.fail/mrus/korda/http/web/root/share"
 	"tty.fail/mrus/korda/http/web/root/theme"
@@ -70,6 +73,15 @@ func (srv *Web) Startup() (err error) {
 		return err
 	}
 
+	srv.app.Use(requestlog.New(srv.rt.Logger(), requestlog.Config{
+		DefaultLevel:     slog.LevelDebug,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelError,
+		Skip: func(c fiber.Ctx) bool {
+			api := "/" + route.For("API").AsURL()
+			return c.Path() == api || strings.HasPrefix(c.Path(), api+"/")
+		},
+	}))
 	srv.app.Use(recover.New())
 	socket.Mount(srv.rt, srv.app, time.Duration(srv.cfg.RequestTimeout)*time.Second)
 	srv.app.Use("/"+route.For("API").AsURL(), srv.api.App())

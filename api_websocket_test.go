@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	gorilla "github.com/gorilla/websocket"
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/internal/testmedia"
+	"xn--gckvb8fzb.com/glides/services/database"
 )
 
 type socketClient struct {
@@ -264,4 +266,137 @@ func TestWebsocketEvents(t *testing.T) {
 	if got = rec.take(); len(got) != 1 || got[0].event != "on_user_delete" || got[0].room != "" || got[0].args[0] != `"`+memberID+`"` {
 		t.Errorf("user delete = %+v", got)
 	}
+}
+
+func TestWebsocketRevokedCredentials(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	addr := h.listen()
+	hub := gh.Websocket(h.rt)
+
+	open := func(t *testing.T, headers http.Header) *socketClient {
+		t.Helper()
+		c := dialSocket(t, addr, headers)
+		if got := c.connect(); !strings.HasPrefix(got, `42["on_server_version"`) {
+			t.Fatalf("first frame = %s", got)
+		}
+		return c
+	}
+	withToken := func(token string) http.Header { return http.Header{"Authorization": {"Bearer " + token}} }
+	next := func(c *socketClient) string {
+		for {
+			if frame := c.read(); !strings.HasPrefix(frame, `42["on_server_version"`) {
+				return frame
+			}
+		}
+	}
+	closed := func(t *testing.T, name string, c *socketClient) {
+		t.Helper()
+		if got := next(c); got != "41" {
+			t.Errorf("%s: frame = %s, want 41", name, got)
+		}
+	}
+	alive := func(t *testing.T, name string, userID string, sockets ...*socketClient) {
+		t.Helper()
+		hub.ToUser(uuid.MustParse(userID), "korda_probe")
+		for _, c := range sockets {
+			if got := next(c); got != `42["korda_probe"]` {
+				t.Errorf("%s: frame = %s, want the probe", name, got)
+			}
+		}
+	}
+	sessionOf := func(t *testing.T, token string) string {
+		t.Helper()
+		for _, s := range h.do(fiber.MethodGet, "/api/sessions", nil, bearer(token)...).array(t) {
+			if session := s.(map[string]any); session["current"] == true {
+				return session["id"].(string)
+			}
+		}
+		t.Fatal("no current session")
+		return ""
+	}
+	user := func(t *testing.T, name string) (string, func() string) {
+		t.Helper()
+		email := name + "@example.com"
+		id := h.createUser(admin, email, name, name+"-password")
+		return id, func() string { return h.login(email, name+"-password") }
+	}
+	apiKey := func(t *testing.T, token string) (string, string) {
+		t.Helper()
+		created := h.do(fiber.MethodPost, "/api/api-keys", `{"name":"socket","permissions":["all"]}`, bearer(token)...)
+		return created.object(t)["apiKey"].(map[string]any)["id"].(string), created.str(t, "secret")
+	}
+
+	t.Run("logout", func(t *testing.T) {
+		_, login := user(t, "logout")
+		token := login()
+		c := open(t, withToken(token))
+		session := sessionOf(t, token)
+		h.do(fiber.MethodPost, "/api/auth/logout", nil, bearer(token)...)
+		if got := next(c); got != `42["on_session_delete","`+session+`"]` {
+			t.Errorf("frame = %s, want on_session_delete", got)
+		}
+		closed(t, "logout", c)
+	})
+
+	t.Run("delete session", func(t *testing.T) {
+		id, login := user(t, "single")
+		current, other := login(), login()
+		kept, revoked := open(t, withToken(current)), open(t, withToken(other))
+		h.do(fiber.MethodDelete, "/api/sessions/"+sessionOf(t, other), nil, bearer(current)...).expect(t, 204, "")
+		closed(t, "deleted session", revoked)
+		alive(t, "current session", id, kept)
+	})
+
+	t.Run("delete other sessions", func(t *testing.T) {
+		id, login := user(t, "others")
+		current := login()
+		keyID, secret := apiKey(t, current)
+		kept, first, second := open(t, withToken(current)), open(t, withToken(login())), open(t, withToken(login()))
+		key := open(t, http.Header{"X-Api-Key": {secret}})
+		h.do(fiber.MethodDelete, "/api/sessions", nil, bearer(current)...).expect(t, 204, "")
+		closed(t, "first", first)
+		closed(t, "second", second)
+		alive(t, "current session and key", id, kept, key)
+
+		h.do(fiber.MethodDelete, "/api/api-keys/"+keyID, nil, bearer(current)...).expect(t, 204, "")
+		closed(t, "deleted key", key)
+		alive(t, "session after the key", id, kept)
+	})
+
+	t.Run("password change", func(t *testing.T) {
+		id, login := user(t, "password")
+		current := login()
+		kept, revoked := open(t, withToken(current)), open(t, withToken(login()))
+		if res := h.do(fiber.MethodPost, "/api/auth/change-password", `{"password":"password-password","newPassword":"password-changed"}`, bearer(current)...); res.Status != fiber.StatusOK {
+			t.Fatalf("change password = %d %s", res.Status, res.Body)
+		}
+		closed(t, "other session", revoked)
+		alive(t, "current session", id, kept)
+	})
+
+	t.Run("expired session", func(t *testing.T) {
+		id, login := user(t, "expired")
+		current, other := login(), login()
+		kept, revoked := open(t, withToken(current)), open(t, withToken(other))
+		if _, err := database.Exec(h.ctx, database.From(h.rt), `UPDATE sessions SET expires_at = $1 WHERE id = $2`,
+			time.Now().Add(-time.Minute).UTC(), sessionOf(t, other)); err != nil {
+			t.Fatal(err)
+		}
+		if err := cleanupSessions(h); err != nil {
+			t.Fatal(err)
+		}
+		closed(t, "expired session", revoked)
+		alive(t, "current session", id, kept)
+	})
+
+	t.Run("deleted user", func(t *testing.T) {
+		id, login := user(t, "deleted")
+		token := login()
+		_, secret := apiKey(t, token)
+		session, key := open(t, withToken(token)), open(t, http.Header{"X-Api-Key": {secret}})
+		h.do(fiber.MethodDelete, "/api/admin/users/"+id, `{}`, bearer(admin)...)
+		closed(t, "session", session)
+		closed(t, "key", key)
+	})
 }

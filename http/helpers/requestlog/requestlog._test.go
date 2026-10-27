@@ -102,3 +102,39 @@ func TestStreamedBodiesAreNotRead(t *testing.T) {
 		t.Errorf("log = %s, want the declared length of the stream", out.String())
 	}
 }
+
+func TestSecretPathsAndSkippedRequests(t *testing.T) {
+	var out bytes.Buffer
+	app := fiber.New()
+	app.Use(New(slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug})), Config{
+		DefaultLevel: slog.LevelDebug, ClientErrorLevel: slog.LevelInfo, ServerErrorLevel: slog.LevelError,
+		Skip: func(c fiber.Ctx) bool { return strings.HasPrefix(c.Path(), "/api/") },
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	cases := map[string]string{
+		"/share/s3cr3t-key":          `"path":"/share/redacted"`,
+		"/s/s3cr3t-slug":             `"path":"/s/redacted"`,
+		"/share/s3cr3t-key/download": `"path":"/share/redacted/download"`,
+		"/share/":                    `"path":"/share/"`,
+		"/static/share/share.css":    `"path":"/static/share/share.css"`,
+	}
+	for path, want := range cases {
+		out.Reset()
+		if _, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil)); err != nil {
+			t.Fatal(err)
+		}
+		logged := out.String()
+		if !strings.Contains(logged, want) || strings.Contains(logged, "s3cr3t") || !strings.Contains(logged, `"ip":"0.0.0.0"`) {
+			t.Errorf("%s: log = %s, want %s and the client address", path, logged, want)
+		}
+	}
+
+	out.Reset()
+	if _, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/server/ping", nil)); err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("skipped request logged: %s", out.String())
+	}
+}

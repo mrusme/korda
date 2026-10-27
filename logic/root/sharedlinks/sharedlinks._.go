@@ -269,7 +269,7 @@ func Mine(ctx context.Context, rt *runtime.Runtime, a *auth.Auth) (*Details, err
 	return full(ctx, rt, link, !link.ShowExif)
 }
 
-func Login(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *LoginInput) (*Details, string, error) {
+func Login(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *LoginInput, clientIP string) (*Details, string, error) {
 	if a.SharedLink == nil {
 		return nil, "", errs.ErrForbidden
 	}
@@ -282,6 +282,7 @@ func Login(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, in *LoginInpu
 		return nil, "", errs.ErrSharedLinkNoPassword
 	}
 	if link.Password.V != in.Password {
+		rt.Warn("sharedlinks", "failed login attempt", "link", link.ID.String(), "ip", clientIP)
 		return nil, "", errs.ErrSharedLinkPassword
 	}
 

@@ -48,6 +48,7 @@ func Delete(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID
 		return nil, err
 	}
 
+	gh.Emit(ctx, rt, event.UserSoftDeleted{UserID: id})
 	if force {
 		if err = gh.Jobs(rt).DeleteUser(id, true); err != nil {
 			return nil, err

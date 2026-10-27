@@ -139,7 +139,7 @@ func (r *Route) login(c fiber.Ctx, cred credential) error {
 	}
 	form, _ := url.ParseQuery(string(body))
 
-	_, token, err := logicsharedlinks.Login(c.Context(), r.Runtime, a, &logicsharedlinks.LoginInput{Password: form.Get("password")})
+	_, token, err := logicsharedlinks.Login(c.Context(), r.Runtime, a, &logicsharedlinks.LoginInput{Password: form.Get("password")}, c.IP())
 	switch {
 	case errors.Is(err, errs.ErrSharedLinkPassword):
 		return r.render(c, fiber.StatusUnauthorized, &page{Title: titlePassword, Password: true, Error: wrongPassword})

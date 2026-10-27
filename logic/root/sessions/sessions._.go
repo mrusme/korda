@@ -11,6 +11,7 @@ import (
 	"tty.fail/mrus/korda/helpers/secret"
 	"tty.fail/mrus/korda/logic/helpers/access"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/permission"
 	"tty.fail/mrus/korda/models/session"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -84,7 +85,12 @@ func Delete(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID
 		return err
 	}
 
-	return gh.Repositories(rt).Session.Delete(ctx, id)
+	if err := gh.Repositories(rt).Session.Delete(ctx, id); err != nil {
+		return err
+	}
+	gh.Emit(ctx, rt, event.SessionsRevoked{SessionIDs: []uuid.UUID{id}})
+
+	return nil
 }
 
 func DeleteAll(ctx context.Context, rt *runtime.Runtime, a *auth.Auth) error {
@@ -93,7 +99,15 @@ func DeleteAll(ctx context.Context, rt *runtime.Runtime, a *auth.Auth) error {
 		except = uuid.NullUUID{UUID: a.Session.ID, Valid: true}
 	}
 
-	return gh.Repositories(rt).Session.DeleteAllOfUser(ctx, a.User.ID, except)
+	ids, err := gh.Repositories(rt).Session.DeleteAllOfUser(ctx, a.User.ID, except)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		gh.Emit(ctx, rt, event.SessionsRevoked{SessionIDs: ids})
+	}
+
+	return nil
 }
 
 func Lock(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID) error {
@@ -109,7 +123,10 @@ func Cleanup(ctx context.Context, rt *runtime.Runtime) error {
 	if err != nil {
 		return err
 	}
+	if len(deleted) > 0 {
+		gh.Emit(ctx, rt, event.SessionsRevoked{SessionIDs: deleted})
+	}
 
-	rt.Info("sessions", "cleanup", "deleted", deleted)
+	rt.Info("sessions", "cleanup", "deleted", len(deleted))
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"tty.fail/mrus/korda/helpers/secret"
 	"tty.fail/mrus/korda/models/apikey"
 	"tty.fail/mrus/korda/models/auth"
+	"tty.fail/mrus/korda/models/event"
 	"tty.fail/mrus/korda/models/permission"
 	"xn--gckvb8fzb.com/glides/runtime"
 )
@@ -133,5 +134,10 @@ func Delete(ctx context.Context, rt *runtime.Runtime, a *auth.Auth, id uuid.UUID
 		return notFound(err)
 	}
 
-	return repos.APIKey.Delete(ctx, a.User.ID, id)
+	if err := repos.APIKey.Delete(ctx, a.User.ID, id); err != nil {
+		return err
+	}
+	gh.Emit(ctx, rt, event.APIKeyDeleted{KeyID: id})
+
+	return nil
 }

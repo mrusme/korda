@@ -320,4 +320,68 @@ func TestConformanceTimeline(t *testing.T) {
 	})
 	compare(t, step{name: "buckets trashed", method: "GET", path: "/api/timeline/buckets?isTrashed=true", auth: "owner"}, plain)
 	compare(t, step{name: "map markers after trash", method: "GET", path: "/api/map/markers?isFavorite=true", auth: "owner"}, plain)
+
+	revoked := map[string]<-chan string{}
+	for name, target := range map[string]string{"immich": strings.TrimPrefix(base, "http://"), "korda": addr} {
+		s := immich
+		if name == "korda" {
+			s = korda
+		}
+		token := s.send(fiber.MethodPost, "/api/auth/login",
+			fmt.Sprintf(`{"email":%q,"password":%q}`, userEmail, userPassword)).str(t, "accessToken")
+		var sessions []struct {
+			ID      string `json:"id"`
+			Current bool   `json:"current"`
+		}
+		if err := json.Unmarshal(s.send(fiber.MethodGet, "/api/sessions", "", bearer(token)...).Body, &sessions); err != nil {
+			t.Fatal(err)
+		}
+		for _, session := range sessions {
+			if session.Current {
+				s.vars["second"] = session.ID
+			}
+		}
+		client := dialSocket(t, target, http.Header{"Authorization": {"Bearer " + token}})
+		if first := client.connect(); !strings.HasPrefix(first, `42["on_server_version"`) {
+			t.Fatalf("%s second session first frame = %s", name, first)
+		}
+		revoked[name] = client.collect()
+	}
+	compare(t, step{name: "session delete", method: "DELETE", path: "/api/sessions/{second}", auth: "owner"}, plain)
+	compare(t, step{name: "unfavorite", method: "PUT", path: "/api/assets/{exif}", body: `{"isFavorite":false}`, auth: "owner"}, plain)
+	t.Run("deleted session socket", func(t *testing.T) {
+		frames := awaitFrames(t, revoked["immich"], map[string]int{"on_asset_update": 1}, 30*time.Second)
+		if slices.Contains(frames, "41") {
+			t.Errorf("Immich closes the socket of a deleted session as well, the deviation is gone: %v", frames)
+		}
+		t.Logf("deviation: korda closes the socket of a deleted session, Immich keeps it open and sends %d frames", len(frames))
+
+		var got []string
+		deadline := time.After(10 * time.Second)
+		for !slices.Contains(got, "41") {
+			select {
+			case frame, ok := <-revoked["korda"]:
+				if !ok {
+					t.Fatalf("korda socket closed after %v without 41", got)
+				}
+				got = append(got, frame)
+			case <-deadline:
+				t.Fatalf("korda frames = %v, want 41", got)
+			}
+		}
+		grace := time.After(time.Second)
+		for {
+			select {
+			case frame, ok := <-revoked["korda"]:
+				if ok && strings.HasPrefix(frame, `42[`) {
+					t.Errorf("korda sent %s after 41", frame)
+				}
+				if !ok {
+					return
+				}
+			case <-grace:
+				return
+			}
+		}
+	})
 }

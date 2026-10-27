@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -204,6 +205,7 @@ type apiResponse struct {
 type harnessOptions struct {
 	rateLimitAuth int
 	publicUsers   bool
+	logLevel      string
 }
 
 func testConfig(dir string, opts harnessOptions) string {
@@ -211,7 +213,7 @@ func testConfig(dir string, opts harnessOptions) string {
 Mode = "production"
 
 [Logging]
-Level = "error"
+Level = %q
 
 [Web]
 RequestTimeout = 30
@@ -233,7 +235,7 @@ ThumbnailQuality = 80
 PublicUsers = %t
 TrashDays = 30
 UserDeleteDelay = 7
-`, opts.rateLimitAuth, filepath.Join(dir, "media"), opts.publicUsers)
+`, cmp.Or(opts.logLevel, "error"), opts.rateLimitAuth, filepath.Join(dir, "media"), opts.publicUsers)
 }
 
 func newHarness(t *testing.T) *apiHarness {

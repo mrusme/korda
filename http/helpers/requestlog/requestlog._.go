@@ -14,12 +14,31 @@ import (
 
 const Redacted = "redacted"
 
-var Secrets = []string{"sessionKey", "apiKey", "key", "slug"}
+var (
+	Secrets     = []string{"sessionKey", "apiKey", "key", "slug"}
+	SecretPaths = []string{"/share/", "/s/"}
+)
 
 type Config struct {
 	DefaultLevel     slog.Level
 	ClientErrorLevel slog.Level
 	ServerErrorLevel slog.Level
+	Skip             func(c fiber.Ctx) bool
+}
+
+func redactPath(path string) string {
+	for _, prefix := range SecretPaths {
+		rest, ok := strings.CutPrefix(path, prefix)
+		if !ok || rest == "" {
+			continue
+		}
+		if _, tail, found := strings.Cut(rest, "/"); found {
+			return prefix + Redacted + "/" + tail
+		}
+		return prefix + Redacted
+	}
+
+	return path
 }
 
 func query(c fiber.Ctx) string {
@@ -55,12 +74,15 @@ func New(logger *slog.Logger, cfg Config) fiber.Handler {
 	)
 
 	return func(c fiber.Ctx) error {
+		if cfg.Skip != nil && cfg.Skip(c) {
+			return c.Next()
+		}
 		once.Do(func() {
 			errHandler = c.App().ErrorHandler
 		})
 
 		start := time.Now()
-		path := c.Path()
+		path := redactPath(c.Path())
 		q := query(c)
 
 		err := c.Next()
@@ -77,6 +99,7 @@ func New(logger *slog.Logger, cfg Config) fiber.Handler {
 			slog.Time("time", start.UTC()),
 			slog.String("method", c.Method()),
 			slog.String("host", c.Hostname()),
+			slog.String("ip", c.IP()),
 			slog.String("path", path),
 			slog.String("query", q),
 			slog.String("route", c.Route().Path),

@@ -60,8 +60,20 @@ type SessionDeleted struct {
 	At        time.Time
 }
 
+type SessionsRevoked struct {
+	SessionIDs []uuid.UUID
+}
+
 type UserDeleted struct {
 	UserID uuid.UUID
+}
+
+type UserSoftDeleted struct {
+	UserID uuid.UUID
+}
+
+type APIKeyDeleted struct {
+	KeyID uuid.UUID
 }
 
 type NotificationCreated struct {

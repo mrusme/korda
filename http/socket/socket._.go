@@ -42,10 +42,20 @@ func Mount(rt *runtime.Runtime, app *fiber.App, timeout time.Duration) {
 		if a.Session != nil {
 			id.SessionID = uuid.NullUUID{UUID: a.Session.ID, Valid: true}
 		}
+		if a.APIKey != nil {
+			id.APIKeyID = uuid.NullUUID{UUID: a.APIKey.ID, Valid: true}
+		}
 		return id, nil
 	})
 	hub.SetConnected(func(id websocket.Identity) {
+		rt.Debug(append([]any{"socket", "connected"}, identityAttrs(id)...)...)
 		hub.ToUser(id.UserID, websocket.EventServerVersion, view.NewVersion())
+	})
+	hub.SetRejected(func(client string, err error) {
+		rt.Info("socket", "authentication failed", "ip", client, "error", err.Error())
+	})
+	hub.SetDisconnected(func(id websocket.Identity, reason string) {
+		rt.Debug(append([]any{"socket", "disconnected", "reason", reason}, identityAttrs(id)...)...)
 	})
 	if bus := gh.Events(rt); bus != nil {
 		bus.On(func(ctx context.Context, ev any) {
@@ -55,7 +65,23 @@ func Mount(rt *runtime.Runtime, app *fiber.App, timeout time.Duration) {
 		})
 	}
 
-	app.Use(websocket.Path, adaptor.HTTPHandler(hub.Handler()))
+	handle := adaptor.HTTPHandler(hub.Handler())
+	app.Use(websocket.Path, func(c fiber.Ctx) error {
+		c.RequestCtx().SetUserValue(websocket.ClientKey, c.IP())
+		return handle(c)
+	})
+}
+
+func identityAttrs(id websocket.Identity) []any {
+	attrs := []any{"user", id.UserID.String()}
+	if id.SessionID.Valid {
+		attrs = append(attrs, "session", id.SessionID.UUID.String())
+	}
+	if id.APIKeyID.Valid {
+		attrs = append(attrs, "key", id.APIKeyID.UUID.String())
+	}
+
+	return append(attrs, "ip", id.Client)
 }
 
 func idStrings(ids []uuid.UUID) []string {
@@ -90,7 +116,16 @@ func send(ctx context.Context, rt *runtime.Runtime, hub *websocket.Hub, ev any) 
 	case event.SessionDeleted:
 		time.AfterFunc(sessionDeleteDelay, func() {
 			hub.ToSession(e.SessionID, websocket.EventSessionDelete, e.SessionID.String())
+			hub.DisconnectSession(e.SessionID)
 		})
+	case event.SessionsRevoked:
+		for _, id := range e.SessionIDs {
+			hub.DisconnectSession(id)
+		}
+	case event.UserSoftDeleted:
+		hub.DisconnectUser(e.UserID)
+	case event.APIKeyDeleted:
+		hub.DisconnectAPIKey(e.KeyID)
 	case event.UserDeleted:
 		hub.Broadcast(websocket.EventUserDelete, e.UserID.String())
 	case event.AssetEditReady:

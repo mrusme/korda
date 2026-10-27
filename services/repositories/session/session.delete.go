@@ -13,23 +13,18 @@ func (repo *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-func (repo *Repository) DeleteAllOfUser(ctx context.Context, userID uuid.UUID, except uuid.NullUUID) error {
-	_, err := database.Exec(ctx, repo.db, `DELETE FROM sessions
-		WHERE user_id = $1 AND ($2 IS NULL OR id <> $2)`,
+func (repo *Repository) DeleteAllOfUser(ctx context.Context, userID uuid.UUID, except uuid.NullUUID) ([]uuid.UUID, error) {
+	return database.Values[uuid.UUID](ctx, repo.db, `DELETE FROM sessions
+		WHERE user_id = $1 AND ($2 IS NULL OR id <> $2)
+		RETURNING id`,
 		userID, except,
 	)
-
-	return err
 }
 
-func (repo *Repository) Cleanup(ctx context.Context, now time.Time) (int64, error) {
-	res, err := database.Exec(ctx, repo.db, `DELETE FROM sessions
-		WHERE updated_at <= $1 OR (expires_at IS NOT NULL AND expires_at <= $2)`,
+func (repo *Repository) Cleanup(ctx context.Context, now time.Time) ([]uuid.UUID, error) {
+	return database.Values[uuid.UUID](ctx, repo.db, `DELETE FROM sessions
+		WHERE updated_at <= $1 OR (expires_at IS NOT NULL AND expires_at <= $2)
+		RETURNING id`,
 		now.AddDate(0, 0, -90), now,
 	)
-	if err != nil {
-		return 0, err
-	}
-
-	return res.RowsAffected(), nil
 }

@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -22,11 +23,18 @@ const (
 	maxPayload     = 1e6
 	eventError     = "error"
 	unauthorized   = "unauthorized"
+	ClientKey      = "korda.websocket.client"
 )
+
+var errUnauthorized = errors.New(unauthorized)
+
+type clientKey struct{}
 
 type Identity struct {
 	UserID    uuid.UUID
 	SessionID uuid.NullUUID
+	APIKeyID  uuid.NullUUID
+	Client    string
 }
 
 type Authenticator func(r *http.Request) (*Identity, error)
@@ -39,6 +47,8 @@ type Hub struct {
 	handler      http.Handler
 	authenticate Authenticator
 	connected    func(Identity)
+	rejected     func(client string, err error)
+	disconnected func(id Identity, reason string)
 	observer     Observer
 }
 
@@ -55,6 +65,18 @@ func (hub *Hub) SetAuthenticator(fn Authenticator) {
 func (hub *Hub) SetConnected(fn func(Identity)) {
 	hub.mu.Lock()
 	hub.connected = fn
+	hub.mu.Unlock()
+}
+
+func (hub *Hub) SetRejected(fn func(client string, err error)) {
+	hub.mu.Lock()
+	hub.rejected = fn
+	hub.mu.Unlock()
+}
+
+func (hub *Hub) SetDisconnected(fn func(id Identity, reason string)) {
+	hub.mu.Lock()
+	hub.disconnected = fn
 	hub.mu.Unlock()
 }
 
@@ -115,29 +137,55 @@ func (hub *Hub) Handler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		handler.ServeHTTP(w, r.WithContext(context.WithoutCancel(r.Context())))
+		ctx := context.WithoutCancel(r.Context())
+		if client, ok := r.Context().Value(ClientKey).(string); ok {
+			ctx = context.WithValue(ctx, clientKey{}, client)
+		}
+		handler.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func (hub *Hub) join(s *socket.Socket) {
 	hub.mu.RLock()
-	authenticate, connected := hub.authenticate, hub.connected
+	authenticate, connected, rejected, disconnected := hub.authenticate, hub.connected, hub.rejected, hub.disconnected
 	hub.mu.RUnlock()
 
+	r := s.Request().Request()
+	client, _ := r.Context().Value(clientKey{}).(string)
 	var id *Identity
 	var err error
 	if authenticate != nil {
-		id, err = authenticate(s.Request().Request())
+		id, err = authenticate(r)
 	}
 	if authenticate == nil || err != nil || id == nil {
+		if rejected != nil {
+			if err == nil {
+				err = errUnauthorized
+			}
+			rejected(client, err)
+		}
 		_ = s.Emit(eventError, unauthorized)
 		s.Disconnect(false)
 		return
 	}
+	id.Client = client
 
 	s.Join(socket.Room(id.UserID.String()))
 	if id.SessionID.Valid {
 		s.Join(socket.Room(id.SessionID.UUID.String()))
+	}
+	if id.APIKeyID.Valid {
+		s.Join(socket.Room(id.APIKeyID.UUID.String()))
+	}
+	if disconnected != nil {
+		identity := *id
+		_ = s.On("disconnect", func(args ...any) {
+			reason := ""
+			if len(args) > 0 {
+				reason, _ = args[0].(string)
+			}
+			disconnected(identity, reason)
+		})
 	}
 	if connected != nil {
 		connected(*id)
@@ -188,4 +236,26 @@ func (hub *Hub) ToSession(sessionID uuid.UUID, event string, args ...any) {
 
 func (hub *Hub) Broadcast(event string, args ...any) {
 	hub.emit("", event, args)
+}
+
+func (hub *Hub) disconnect(room string) {
+	hub.mu.RLock()
+	io := hub.io
+	hub.mu.RUnlock()
+
+	if io != nil {
+		io.In(socket.Room(room)).DisconnectSockets(false)
+	}
+}
+
+func (hub *Hub) DisconnectUser(userID uuid.UUID) {
+	hub.disconnect(userID.String())
+}
+
+func (hub *Hub) DisconnectSession(sessionID uuid.UUID) {
+	hub.disconnect(sessionID.String())
+}
+
+func (hub *Hub) DisconnectAPIKey(keyID uuid.UUID) {
+	hub.disconnect(keyID.String())
 }
