@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/google/uuid"
 	"tty.fail/mrus/korda/errs"
@@ -118,16 +117,6 @@ func (m *MediaRoot) RemoveAll(relative string) error {
 	return os.RemoveAll(abs)
 }
 
-func (m *MediaRoot) Usage() (u Usage, err error) {
-	var st syscall.Statfs_t
-	if err = syscall.Statfs(m.path, &st); err != nil {
-		return u, err
-	}
-
-	size := int64(st.Bsize)
-	u.Total = int64(st.Blocks) * size
-	u.Free = int64(st.Bfree) * size
-	u.Available = int64(st.Bavail) * size
-
-	return u, nil
+func (m *MediaRoot) Usage() (Usage, error) {
+	return diskUsage(m.path)
 }

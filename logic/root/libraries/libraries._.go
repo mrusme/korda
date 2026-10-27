@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/sys/unix"
 	"tty.fail/mrus/korda/errs"
 	gh "tty.fail/mrus/korda/helpers"
 	"xn--gckvb8fzb.com/glides/runtime"
@@ -79,7 +78,7 @@ func validatePath(rt *runtime.Runtime, p string) PathResult {
 		return r
 	}
 
-	if unix.Access(p, unix.R_OK) != nil {
+	if !readable(p) {
 		r.Message = "Lacking read permission for folder"
 		return r
 	}
