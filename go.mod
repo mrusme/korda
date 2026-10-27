@@ -5,6 +5,7 @@ go 1.27.2
 toolchain go1.27.3
 
 require (
+	github.com/andybalholm/brotli v1.2.4
 	github.com/gen2brain/h265 v0.2.3
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/google/uuid v1.6.0
@@ -25,7 +26,6 @@ require (
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dunglas/httpsfv v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

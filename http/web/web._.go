@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/static"
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/http/api"
+	"tty.fail/mrus/korda/http/helpers/compress"
 	"tty.fail/mrus/korda/http/socket"
 	"tty.fail/mrus/korda/http/web/root/share"
 	"tty.fail/mrus/korda/http/web/root/theme"
@@ -73,6 +74,8 @@ func (srv *Web) Startup() (err error) {
 	socket.Mount(srv.rt, srv.app, time.Duration(srv.cfg.RequestTimeout)*time.Second)
 	srv.app.Use("/"+route.For("API").AsURL(), srv.api.App())
 
+	srv.app.Use("/.well-known/immich", compress.New())
+	srv.app.Use("/custom.css", compress.New())
 	if _, err = wellknown.New(srv.rt, srv.app); err != nil {
 		srv.rt.Error("status", "error", "error", err)
 		return err

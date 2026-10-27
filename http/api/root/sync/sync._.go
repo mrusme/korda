@@ -1,12 +1,13 @@
 package sync
 
 import (
-	"bufio"
 	"errors"
+	"io"
 
 	"github.com/gofiber/fiber/v3"
 	"tty.fail/mrus/korda/http/api/request"
 	"tty.fail/mrus/korda/http/api/view"
+	"tty.fail/mrus/korda/http/helpers/compress"
 	logicauth "tty.fail/mrus/korda/logic/root/auth"
 	logicsync "tty.fail/mrus/korda/logic/root/sync"
 	"tty.fail/mrus/korda/models/permission"
@@ -59,16 +60,13 @@ func (r *Route) GetSyncStream(c fiber.Ctx) error {
 	rt := r.Runtime
 	c.Set(fiber.HeaderContentType, ContentTypeJSONLines)
 
-	return c.SendStreamWriter(func(w *bufio.Writer) {
+	c.Response().SetBodyStream(compress.Stream(func(w io.Writer) error {
 		err := plan.Stream(ctx, rt, func(l logicsync.Line) error {
 			line, err := view.EncodeSyncLine(l)
 			if err != nil {
 				return err
 			}
 			if _, err = w.Write(line); err != nil {
-				return errClientGone
-			}
-			if err = w.Flush(); err != nil {
 				return errClientGone
 			}
 			return nil
@@ -82,7 +80,10 @@ func (r *Route) GetSyncStream(c fiber.Ctx) error {
 				_ = conn.Close()
 			}
 		}
-	})
+		return err
+	}), -1)
+
+	return nil
 }
 
 var errClientGone = errors.New("client closed the connection")

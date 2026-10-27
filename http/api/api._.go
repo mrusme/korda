@@ -14,6 +14,7 @@ import (
 	gh "tty.fail/mrus/korda/helpers"
 	"tty.fail/mrus/korda/http/api/problem"
 	"tty.fail/mrus/korda/http/api/root"
+	"tty.fail/mrus/korda/http/helpers/compress"
 	"tty.fail/mrus/korda/http/helpers/deadline"
 	"tty.fail/mrus/korda/http/helpers/requestlog"
 	"tty.fail/mrus/korda/http/routes"
@@ -78,6 +79,7 @@ func (srv *API) loadMiddlewares() {
 		Header:    CorrelationHeader,
 		Generator: correlationID,
 	}))
+	srv.app.Use(compress.New())
 	srv.app.Use(requestlog.New(srv.rt.Logger(), requestlog.Config{
 		DefaultLevel:     slog.LevelDebug,
 		ClientErrorLevel: slog.LevelInfo,
