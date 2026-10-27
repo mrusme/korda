@@ -212,15 +212,18 @@ func thumbnails(ctx context.Context, rt *runtime.Runtime, a *asset.Asset) (bool,
 
 	repos := gh.Repositories(rt)
 	at := now()
-	for kind, rendition := range map[assetfile.Type]media.Rendition{
-		assetfile.TypePreview:   out.preview,
-		assetfile.TypeThumbnail: out.thumbnail,
+	for _, r := range []struct {
+		kind      assetfile.Type
+		rendition media.Rendition
+	}{
+		{assetfile.TypePreview, out.preview},
+		{assetfile.TypeThumbnail, out.thumbnail},
 	} {
-		previous, err := repos.AssetFile.Upsert(ctx, NewFile(a.ID, kind, rendition.Path, at))
+		previous, err := repos.AssetFile.Upsert(ctx, NewFile(a.ID, r.kind, r.rendition.Path, at))
 		if err != nil {
 			return false, err
 		}
-		if previous != "" && previous != rendition.Path {
+		if previous != "" && previous != r.rendition.Path {
 			if err = gh.MediaRoot(rt).Remove(previous); err != nil {
 				rt.Warn("assets", "thumbnails", "remove", previous, "error", err)
 			}
